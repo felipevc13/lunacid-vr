@@ -14,6 +14,7 @@ Paths come from core/config.py (LUNA_<KEY>, then local.json, then defaults).
 import datetime
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -297,7 +298,8 @@ def install(cfg, dev, apk=None, obb=None, stamp=None, signature_check=None, say=
         raise Problem(
             "the game on the Quest was built on another computer (signed by another key), so Android will not "
             "update it. Your saves are backed up in %s. To switch to this computer's build:\n"
-            "  adb uninstall com.AkumaKira.LunacidVR      (deletes the game and its saves on the Quest)\n"
+            "  uninstall the game: in the headset, Library, the three dots next to Lunacid VR, Uninstall\n"
+            "    (or: adb uninstall com.AkumaKira.LunacidVR). This deletes the game and its saves on the Quest.\n"
             "  python3 lunacid_vr.py install\n"
             "  open the game once on the Quest, quit\n"
             "  python3 lunacid_vr.py restore\n"
@@ -331,12 +333,22 @@ def build(fast=False, skip_passes=False, run=None):
 NEED_GB = 40   # game, Unity with Android, SDK, project, Library, builds (docs/RELEASE_PLAN.md, decision 6)
 
 
-def steamcmd_command(profile):
-    """The SteamCMD line for the supported version. The person types it and their own login; SteamCMD asks for
-    the password and Steam Guard itself. This script never reads, receives or keeps credentials."""
+STEAMCMD = {
+    "Windows": {"exe": "C:\\steamcmd\\steamcmd.exe", "url": "https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip",
+                "how": "download %s, make the folder C:\\steamcmd and unzip it there (right click, Extract All)"},
+    "Darwin": {"exe": "~/steamcmd/steamcmd.sh", "url": "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_osx.tar.gz",
+               "how": "in Terminal: mkdir ~/steamcmd && cd ~/steamcmd && curl -sqL %s | tar zxvf -"},
+}
+
+
+def steamcmd_command(profile, system=None):
+    """The SteamCMD line for the supported version, with SteamCMD where the README puts it (it is an unpacked
+    download, not a command on the PATH). The person types it and their own login; SteamCMD asks for the
+    password and Steam Guard itself. This script never reads, receives or keeps credentials."""
     v = profile["game_versions"][0]
-    return ("steamcmd +@sSteamCmdForcePlatformType windows +login <your Steam user> "
-            "+download_depot %s %s %s +quit" % (profile["appid"], profile["steam_depot"], v["manifest"]))
+    exe = STEAMCMD.get(system or platform.system(), STEAMCMD["Darwin"])["exe"]
+    return ("%s +@sSteamCmdForcePlatformType windows +login <your Steam user> "
+            "+download_depot %s %s %s +quit" % (exe, profile["appid"], profile["steam_depot"], v["manifest"]))
 
 
 def _sha256(path):
@@ -348,11 +360,16 @@ def _sha256(path):
     return h.hexdigest()
 
 
-def check_game(game_data, profile):
+def check_game(game_data, profile, system=None):
     """The game's files against the supported versions' fingerprints (games/lunacid.json)."""
-    get = ("\nGet the supported version with SteamCMD (you type your own login; SteamCMD asks for the rest):\n  %s\n"
-           "then set game_data in local.json to .../steamapps/content/app_%s/depot_%s/LUNACID_Data"
-           % (steamcmd_command(profile), profile["appid"], profile["steam_depot"]))
+    tool = STEAMCMD.get(system or platform.system(), STEAMCMD["Darwin"])
+    get = ("\nGet the supported version with SteamCMD (README, step 2):\n"
+           "  1. If you do not have SteamCMD yet: " + tool["how"] % tool["url"] + "\n"
+           "  2. Run this, with your Steam user name (SteamCMD then asks for your password and Steam Guard code):\n"
+           "     %s\n"
+           "  3. At the end SteamCMD prints \"Depot download complete\" and a folder: set game_data in local.json to\n"
+           "     the LUNACID_Data folder inside it (.../steamapps/content/app_%s/depot_%s/LUNACID_Data)"
+           % (steamcmd_command(profile, system), profile["appid"], profile["steam_depot"]))
     if not game_data or not os.path.isdir(game_data):
         return "FAIL", "game files not found (game_data = %s)%s" % (game_data, get)
     for v in profile["game_versions"]:

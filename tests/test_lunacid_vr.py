@@ -279,7 +279,7 @@ class TestInstall(Base):
         with self.assertRaises(lunacid_vr.Problem) as ctx:
             self.install(quest)
         msg = str(ctx.exception)
-        for words in ("another computer", "adb uninstall com.AkumaKira.LunacidVR", "restore",
+        for words in ("another computer", "adb uninstall com.AkumaKira.LunacidVR", "Library", "Uninstall", "restore",
                       os.path.join("backups", "20261112_2300")):
             self.assertIn(words, msg)
         self.assertFalse(any("uninstall" in w for w in quest.adb_words()))
@@ -504,6 +504,21 @@ class TestDoctor(Base):
         self.assertIn("+@sSteamCmdForcePlatformType windows", detail)
         self.assertIn("+download_depot 1745510 1745511 9110162109347716163", detail)
         self.assertIn("+login <your Steam user>", detail)        # typed by the person, never by the script
+
+    def test_steamcmd_line_names_the_program_where_it_is(self):
+        # 2026-11-13, the Windows notebook: "steamcmd" is not a command there (it is a zip unpacked anywhere).
+        win = lunacid_vr.steamcmd_command(PROFILE, "Windows")
+        self.assertTrue(win.startswith("C:\\steamcmd\\steamcmd.exe +"), win)
+        mac = lunacid_vr.steamcmd_command(PROFILE, "Darwin")
+        self.assertTrue(mac.startswith("~/steamcmd/steamcmd.sh +"), mac)
+        for line in (win, mac):
+            self.assertIn("+login <your Steam user> +download_depot 1745510 1745511 9110162109347716163 +quit", line)
+
+    def test_missing_game_says_where_to_get_steamcmd(self):
+        status, detail = lunacid_vr.check_game(os.path.join(self.tmp, "nowhere"), PROFILE, system="Windows")
+        self.assertIn("https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip", detail)
+        self.assertIn("C:\\steamcmd", detail)
+        self.assertIn("Depot download complete", detail)
 
     def test_disk_space(self):
         gb = 1024 ** 3

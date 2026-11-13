@@ -7,6 +7,16 @@ Everything game-derived is made locally, from your copy, and stays on your machi
 Works on **macOS** and **Windows**. You need about **40 GB free** and a few hours the first time (most of it
 waiting on Unity).
 
+## Start here
+
+**Never used a terminal? Follow the step-by-step guide for your computer.** It says what to click, what to type,
+and how to check each step:
+
+- **Windows:** [docs/SETUP_WINDOWS.md](docs/SETUP_WINDOWS.md)
+- **Mac:** [docs/SETUP_MAC.md](docs/SETUP_MAC.md)
+
+The rest of this page is the short version, for people used to these tools.
+
 ## What you need
 
 | | Where | Notes |
@@ -29,7 +39,8 @@ cd <the repository's folder>
 cp local.example.json local.json
 ```
 
-Edit `local.json` (it stays on your machine and is never committed):
+Edit `local.json` (it stays on your machine and is never committed). Replace each value with a real path and
+delete the lines you do not set: the example's text is not a path.
 
 - `work`: a folder for everything the tools make (for example `~/lunacid-work`)
 - `project`: where the Unity project will be, `<work>/project/ExportedProject`
@@ -47,8 +58,11 @@ with your own Steam account, even after the game updates on Steam. You keep play
 `python3 lunacid_vr.py doctor` prints the command. It looks like this:
 
 ```
-steamcmd +@sSteamCmdForcePlatformType windows +login <your Steam user> +download_depot 1745510 1745511 9110162109347716163 +quit
+C:\steamcmd\steamcmd.exe +@sSteamCmdForcePlatformType windows +login <your Steam user> +download_depot 1745510 1745511 9110162109347716163 +quit
 ```
+
+SteamCMD is a download you unpack, not an installed command: use its full path (`C:\steamcmd\steamcmd.exe` on
+Windows, `~/steamcmd/steamcmd.sh` on a Mac). The step-by-step guides show where to get it.
 
 Type your own Steam user name. SteamCMD itself asks for your password and Steam Guard code. **These tools
 never read, receive or store your Steam credentials.** The files land in SteamCMD's
@@ -143,8 +157,9 @@ reinstall.
 
 1. **Back up the saves:** `python3 lunacid_vr.py backup` (`install` has just made one too). Check the folder it
    names holds your `SAVE_*.MIDNIGHT` files.
-2. **Uninstall the game yourself:** `adb uninstall com.AkumaKira.LunacidVR`. This deletes the game, its saves and
-   its game data (OBB) from the Quest. `lunacid_vr.py` never does it for you.
+2. **Uninstall the game yourself:** in the headset, **Library**, the **three dots** next to Lunacid VR,
+   **Uninstall** (or `adb uninstall com.AkumaKira.LunacidVR` if adb is on your PATH). This deletes the game, its
+   saves and its game data (OBB) from the Quest. `lunacid_vr.py` never does it for you.
 3. **Install:** `python3 lunacid_vr.py install`. The game data is copied again, so this takes a few minutes.
 4. **Open the game once on the Quest, then quit.** The game makes its saves folder on the first launch, and
    `restore` needs it.
