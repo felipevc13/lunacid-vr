@@ -61,12 +61,20 @@ class TestRepoCleanliness(unittest.TestCase):
             f"Found proprietary/game asset files inside repository:\n" + "\n".join(found_forbidden)
         )
 
+    def test_volumes_rule(self):
+        # Every Mac mounts Unity Hub's installer at /Volumes/Unity Hub; a named disk is one machine's.
+        import re
+        pattern = re.compile(r"/Volumes/(?!Unity Hub\b|\")")
+        self.assertIsNone(pattern.search('"/Volumes/Unity Hub/Unity Hub.app"'))
+        self.assertIsNone(pattern.search('if "/Volumes/" in line'))
+        self.assertIsNotNone(pattern.search("/Volumes/LunacidProject/ExportedProject"))
+
     def test_no_machine_paths_in_code(self):
         # Every path of one machine lives in the local config (local.json, not committed; core/config.py), so the
         # repository builds on any Mac or Windows PC (docs/RELEASE_PLAN.md, item 4).
         import re
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        pattern = re.compile(r"/Volumes/|/Users/[A-Za-z]|[A-Z]:\\\\Users\\\\|/home/[a-z]")
+        pattern = re.compile(r"/Volumes/(?!Unity Hub\b|\")|/Users/[A-Za-z]|[A-Z]:\\\\Users\\\\|/home/[a-z]")
         code = {".py", ".cs", ".sh", ".json", ".ps1", ".md"}   # READMEs too: they reach the public repository
         found = []
         import subprocess

@@ -7,120 +7,40 @@ Everything game-derived is made locally, from your copy, and stays on your machi
 Works on **macOS** and **Windows**. You need about **40 GB free** and a few hours the first time (most of it
 waiting on Unity).
 
-## Start here
+## Install: one line
 
-**Never used a terminal? Follow the step-by-step guide for your computer.** It says what to click, what to type,
-and how to check each step:
+Before you start: **Lunacid** on your Steam account, a **Quest 3 or 3S** in **developer mode** with its USB-C
+cable, about **40 GB free**, and 2 to 3 hours (most of it waiting). The guide for your computer says how to turn on
+developer mode and what the line will ask you:
+**[Windows](docs/SETUP_WINDOWS.md)** · **[Mac](docs/SETUP_MAC.md)**
 
-- **Windows:** [docs/SETUP_WINDOWS.md](docs/SETUP_WINDOWS.md)
-- **Mac:** [docs/SETUP_MAC.md](docs/SETUP_MAC.md)
-
-The rest of this page is the short version, for people used to these tools.
-
-## What you need
-
-| | Where | Notes |
-|---|---|---|
-| Python 3.9+ and Git | python.org, git-scm.com | On Windows, type `py` where this page says `python3` |
-| Unity **6000.0.85f1** with **Android Build Support** | Unity Hub (Installs, Add modules) | Tick the Android SDK & NDK and OpenJDK inside it. Sign in to Unity Hub once (a free Personal licence is enough): builds need an active licence |
-| .NET 8 SDK | see `tools/shader_gen/README.md` | Builds the shader decompiler. It can live in `<work>/tools/dotnet`, no admin needed |
-| AssetRipper **2.0.0** (`AssetRipper.GUI.Free`) | AssetRipper's GitHub releases | Turns the game into a Unity project |
-| SteamCMD | Valve's developer wiki | Downloads the exact game version the port was made for |
-| A Quest in developer mode | Meta Horizon app on your phone | Then allow USB debugging in the headset the first time you plug it in |
-
-Put the work folder and the Unity project on an **internal disk**. External and exFAT disks work but are slow,
-and a bumped cable mid-build costs you the build. `doctor` warns about both.
-
-## 1. Configure
+**Windows:** press the Windows key, type `PowerShell`, Enter, and paste:
 
 ```
-git clone <this repository>
-cd <the repository's folder>
-cp local.example.json local.json
+irm https://raw.githubusercontent.com/felipevc13/lunacid-vr/main/setup.ps1 | iex
 ```
 
-Edit `local.json` (it stays on your machine and is never committed). Replace each value with a real path and
-delete the lines you do not set: the example's text is not a path.
-
-- `work`: a folder for everything the tools make (for example `~/lunacid-work`)
-- `project`: where the Unity project will be, `<work>/project/ExportedProject`
-- `game_data`: the game's `LUNACID_Data` folder (step 2)
-- `assetripper`: the path to `AssetRipper.GUI.Free`
-
-Leave out `unity`, `android_sdk`, `android_ndk` and `jdk` to use Unity Hub's default install. `python3 core/config.py`
-prints what every path resolved to.
-
-## 2. Get the game files
-
-The port was made for one version of the game: Steam build 24780950. SteamCMD can download that exact version
-with your own Steam account, even after the game updates on Steam. You keep playing the current version on PC.
-
-`python3 lunacid_vr.py doctor` prints the command. It looks like this:
+**Mac:** press Cmd+Space, type `Terminal`, Return, and paste:
 
 ```
-C:\steamcmd\steamcmd.exe +@sSteamCmdForcePlatformType windows +login <your Steam user> +download_depot 1745510 1745511 9110162109347716163 +quit
+curl -fsSL https://raw.githubusercontent.com/felipevc13/lunacid-vr/main/setup.sh | bash
 ```
 
-SteamCMD is a download you unpack, not an installed command: use its full path (`C:\steamcmd\steamcmd.exe` on
-Windows, `~/steamcmd/steamcmd.sh` on a Mac). The step-by-step guides show where to get it. On Windows, run SteamCMD in a terminal
-opened as administrator, and let it update itself first (`C:\steamcmd\steamcmd.exe +quit`): on the Windows computer it was
-tested on, its first update failed in a normal terminal with `Failed to load steam.dll`.
+It installs what is missing (Git, Python, Unity Hub and Unity 6000.0.85f1 with Android, SteamCMD and the supported
+game version, AssetRipper, .NET 8), builds the game and installs it on the Quest. It asks only for your Unity Hub
+sign-in, your Steam user name (SteamCMD itself asks for the password: **these tools never see it**), and to plug in
+the Quest. Run the same line again at any time: finished steps are skipped.
 
-Type your own Steam user name. SteamCMD itself asks for your password and Steam Guard code. **These tools
-never read, receive or store your Steam credentials.** The files land in SteamCMD's
-`steamapps/content/app_1745510/depot_1745511/`. Set `game_data` to the `LUNACID_Data` folder inside it.
+To do it by hand instead: [Windows](docs/BY_HAND_WINDOWS.md) · [Mac](docs/BY_HAND_MAC.md).
 
-An existing Steam install also works if it is that same version. `doctor` checks the files' fingerprints either way.
+## For people used to these tools
 
-## 3. Check the machine
-
-```
-python3 lunacid_vr.py doctor
-```
-
-Every line should say `OK` (`WARN` lines are advice). Fix every `FAIL` before going on.
-
-## 4. Make the Unity project (first time only)
-
-```
-python3 tools/extract/assetripper.py --out <work>/project
-python3 tools/shader_gen/make_shaders.py --work <work> --data <game_data>
-```
-
-The first exports the game into `<work>/project/ExportedProject` (about 7 minutes). The second rebuilds the
-game's shaders from your copy for the Quest.
-
-## 5. Build
-
-```
-python3 lunacid_vr.py build
-```
-
-The build applies the port's changes to the project, runs Unity and checks the result. It fails on any compile
-error or missing scene. The first build also imports the whole project, so expect one to two hours. The APK and
-OBB land in `<work>/builds/<date-time>/`.
-
-After changing only the port's code, `python3 lunacid_vr.py build --fast` reuses the last full build's assets.
-
-## 6. Install on the Quest
-
-Plug the Quest in by USB (or connect adb over Wi-Fi), then:
-
-```
-python3 lunacid_vr.py install
-```
-
-Install does these steps in order:
-
-1. Checks the APK is signed by this machine's key.
-2. Backs up your saves.
-3. Copies the game data (OBB) only when it changed.
-4. Updates the app.
-5. Checks every save is still there.
-
-**It never uninstalls the app, because uninstalling deletes the saves.**
-
-`python3 lunacid_vr.py backup` copies the saves at any time. Backups go to `<work>/backups/<date-time>/`.
+Inside a clone, `python3 lunacid_vr.py start` is what the line runs (on Windows, `py` for `python3`). The pieces:
+`setup` (machine), `build` (makes the Unity project the first time, then the APK and OBB, into
+`<work>/builds/<date-time>/`; `--fast` after code-only changes), `install` (backup, OBB only when it changed,
+`adb install -r`, saves checked; never uninstalls), `doctor` (checks everything). Machine paths live in
+`local.json` (see `local.example.json`); `setup` writes it. Put the work folder on an internal disk: external and
+exFAT disks are slow, and a bumped cable mid-build costs the build.
 
 ## Controls
 
@@ -178,8 +98,10 @@ install.
 
 | Command | What it does |
 |---|---|
-| `python3 lunacid_vr.py doctor` | Checks Unity and its Android module, adb, the game version, disk space and type, and the signing key |
-| `python3 lunacid_vr.py build [--fast]` | Builds the APK (and the OBB on a full build) |
+| `python3 lunacid_vr.py start` | Everything, from nothing to the game on the Quest; run it again to carry on |
+| `python3 lunacid_vr.py setup` | Downloads and installs what a build needs, writes `local.json` |
+| `python3 lunacid_vr.py doctor` | Checks Unity and its Android module and licence, adb, the game version, disk space and type, and the signing key |
+| `python3 lunacid_vr.py build [--fast]` | Makes the Unity project if there is none, then builds the APK (and the OBB on a full build) |
 | `python3 lunacid_vr.py backup` | Copies the Quest's saves and the signing key |
 | `python3 lunacid_vr.py install` | Backs up, then installs the newest build. Never uninstalls |
 | `python3 lunacid_vr.py restore [folder]` | Puts a backup's saves back on the Quest (the newest backup with saves). Open the game once after installing first |

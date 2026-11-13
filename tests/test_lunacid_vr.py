@@ -4,6 +4,7 @@
 The Quest is simulated at the level of adb's arguments (FakeQuest), so the tests check the real commands sent
 to the headset without one plugged in."""
 
+import io
 import json
 import os
 import shutil
@@ -398,9 +399,16 @@ class TestBuild(unittest.TestCase):
         self.assertEqual(lunacid_vr.build_command(fast=True), [sys.executable, script, "--fast"])
         self.assertEqual(lunacid_vr.build_command(skip_passes=True), [sys.executable, script, "--skip-passes"])
 
+    def ready(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        os.makedirs(os.path.join(tmp, "project", "ExportedProject", "Assets"))
+        os.makedirs(os.path.join(tmp, "shader_gen", "generated"))
+        return {"work": tmp, "project": os.path.join(tmp, "project", "ExportedProject"), "game_data": "x"}
+
     def test_exit_code_passes_through(self):
         seen = []
-        rc = lunacid_vr.build(fast=True, run=lambda cmd: seen.append(cmd) or 3)
+        rc = lunacid_vr.build(fast=True, run=lambda cmd: seen.append(cmd) or 3, cfg=self.ready())
         self.assertEqual(rc, 3)
         self.assertEqual(seen[0][-1], "--fast")
 
@@ -560,6 +568,21 @@ class TestDoctor(Base):
         os.makedirs(player)
         self.assertEqual(lunacid_vr.check_unity(unity, player)[0], "OK")
         self.assertEqual(lunacid_vr.check_unity(os.path.join(self.tmp, "none"), player)[0], "FAIL")
+
+    def test_doctor_checks_the_unity_licence_and_points_to_setup(self):
+        cfg = {"work": self.cfg["work"], "project": os.path.join(self.tmp, "p"), "unity": os.path.join(self.tmp, "u"),
+               "game_data": None}
+        results = lunacid_vr.doctor(cfg, PROFILE)
+        self.assertIn("Unity licence", [label for label, _, _ in results])
+        game = [d for label, _, d in results if label == "game"][0]
+        self.assertIn("lunacid_vr.py setup", game)
+
+    def test_setup_is_a_command(self):
+        import contextlib
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit):
+            lunacid_vr.main(["setup", "--help"])
+        self.assertIn("setup", out.getvalue())
 
     def test_any_fail_makes_doctor_fail(self):
         self.assertEqual(lunacid_vr.exit_code([("a", "OK", ""), ("b", "WARN", "")]), 0)

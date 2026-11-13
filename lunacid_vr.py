@@ -2,6 +2,8 @@
 """
 Lunacid VR: build the Quest port and put it on the headset, on macOS or Windows.
 
+    python3 lunacid_vr.py start             # everything, from nothing to the game on the Quest
+    python3 lunacid_vr.py setup             # download and install everything a build needs
     python3 lunacid_vr.py doctor            # is this machine ready? (Unity, adb, disk, game version, signing key)
     python3 lunacid_vr.py build [--fast]    # build the APK (and OBB); see tools/build/build.py
     python3 lunacid_vr.py backup            # copy the Quest's saves and this machine's signing key
@@ -324,10 +326,32 @@ def build_command(fast=False, skip_passes=False):
     return cmd
 
 
-def build(fast=False, skip_passes=False, run=None):
-    """Run tools/build/build.py; returns its exit code."""
+def build(fast=False, skip_passes=False, run=None, cfg=None):
+    """Make the Unity project when there is none yet (AssetRipper export, then the game's shaders), then run
+    tools/build/build.py. Returns the first non-zero exit code, or build.py's."""
+    from core import config
+    cfg = cfg or config.load()
     run = run or (lambda cmd: subprocess.call(cmd))
-    return run(build_command(fast, skip_passes))
+    steps = []
+    project = cfg["project"]
+    if not os.path.isdir(os.path.join(project, "Assets")):
+        if os.path.basename(os.path.normpath(project)) != "ExportedProject":
+            raise Problem("no Unity project at %s: the export makes <folder>/ExportedProject, so set project in "
+                          "local.json to a path ending in ExportedProject" % project)
+        steps.append([sys.executable, os.path.join(REPO, "tools", "extract", "assetripper.py"),
+                      "--out", os.path.dirname(os.path.normpath(project))])
+    if not os.path.isdir(os.path.join(cfg["work"], "shader_gen", "generated")):
+        cmd = [sys.executable, os.path.join(REPO, "tools", "shader_gen", "make_shaders.py"),
+               "--work", cfg["work"], "--data", cfg.get("game_data") or ""]
+        if cfg.get("dotnet"):
+            cmd += ["--dotnet", cfg["dotnet"]]
+        steps.append(cmd)
+    steps.append(build_command(fast, skip_passes))
+    for cmd in steps:
+        rc = run(cmd)
+        if rc:
+            return rc
+    return 0
 
 
 NEED_GB = 40   # game, Unity with Android, SDK, project, Library, builds (docs/RELEASE_PLAN.md, decision 6)
@@ -363,7 +387,8 @@ def _sha256(path):
 def check_game(game_data, profile, system=None):
     """The game's files against the supported versions' fingerprints (games/lunacid.json)."""
     tool = STEAMCMD.get(system or platform.system(), STEAMCMD["Darwin"])
-    get = ("\nGet the supported version with SteamCMD (README, step 2):\n"
+    get = ("\nThe easy way: python3 lunacid_vr.py setup (it downloads SteamCMD and the game for you).\n"
+           "By hand, get the supported version with SteamCMD (README, step 2):\n"
            "  1. If you do not have SteamCMD yet: " + tool["how"] % tool["url"] + "\n"
            "  2. Run this, with your Steam user name (SteamCMD then asks for your password and Steam Guard code):\n"
            "     %s\n"
@@ -480,7 +505,8 @@ def doctor(cfg, profile):
                ("adb",) + check_adb(cfg),
                ("game",) + check_game(cfg.get("game_data"), profile),
                ("space",) + check_space(cfg["work"]),
-               ("signing key",) + check_keystore(cfg)]
+               ("signing key",) + check_keystore(cfg),
+               ("Unity licence",) + _setup().check_licence(os.path.expanduser("~"), platform.system())]
     seen = set()
     for label, path in (("work disk", cfg["work"]), ("project disk", cfg["project"])):
         info = disk_info(path)
@@ -490,11 +516,204 @@ def doctor(cfg, profile):
     return results
 
 
+TEXT = {
+    "en": {
+        "hello": "Lunacid VR: this puts Lunacid on your Quest, built from your own copy of the game.\n"
+                 "Three steps. You can stop at any time and run the same command again: it carries on.",
+        "step1": "Step 1 of 3: preparing this computer (Unity, the game files, tools). About 30 to 90 minutes, most of "
+                 "it downloading.",
+        "step1_done": "Step 1 of 3: this computer is ready.",
+        "step2": "Step 2 of 3: building the game for the Quest. The first time takes 1 to 2 hours. Keep the computer "
+                 "plugged in and awake.",
+        "step2_done": "Step 2 of 3: the game is already built.",
+        "step3": "Step 3 of 3: putting the game on the Quest.",
+        "plug": "Connect the Quest to this computer with its USB-C cable and put it on. If it asks to Allow USB "
+                "debugging, tick Always allow and choose Allow. Then press Enter here...",
+        "waiting": "Still no Quest. Check the cable (the one that came with the Quest carries data), that developer "
+                   "mode is on in the Meta Horizon app, and the Allow USB debugging window in the headset.",
+        "restore_q": "There are saves from an earlier backup on this computer. Put them on the Quest? [Y/n] ",
+        "open_once": "In the headset, open Lunacid VR once (Library, Unknown sources), wait for the menu, quit it, "
+                     "then press Enter here...",
+        "failed": "Something went wrong above. Fix what it says and run the same command again: finished steps are "
+                  "skipped.",
+        "done": "Done! In the headset: Library, filter at the top, Unknown sources, Lunacid VR. Have fun.",
+    },
+    "pt": {
+        "hello": "Lunacid VR: isto coloca o Lunacid no seu Quest, gerado a partir da sua cópia do jogo.\n"
+                 "São três passos. Pode parar quando quiser e rodar o mesmo comando de novo: ele continua de onde "
+                 "parou.",
+        "step1": "Passo 1 de 3: preparando este computador (Unity, os arquivos do jogo, ferramentas). De 30 a 90 "
+                 "minutos, quase tudo download.",
+        "step1_done": "Passo 1 de 3: este computador já está pronto.",
+        "step2": "Passo 2 de 3: gerando o jogo para o Quest. Da primeira vez leva de 1 a 2 horas. Deixe o computador "
+                 "na tomada e sem entrar em repouso.",
+        "step2_done": "Passo 2 de 3: o jogo já foi gerado.",
+        "step3": "Passo 3 de 3: colocando o jogo no Quest.",
+        "plug": "Ligue o Quest neste computador com o cabo USB-C e coloque-o no rosto. Se ele pedir para Permitir a "
+                "depuração USB, marque Sempre permitir e escolha Permitir. Depois aperte Enter aqui...",
+        "waiting": "O Quest ainda não apareceu. Confira o cabo (o que veio com o Quest transmite dados), se o modo "
+                   "desenvolvedor está ligado no app Meta Horizon, e a janela Permitir depuração USB no headset.",
+        "restore_q": "Há saves de um backup anterior neste computador. Colocar no Quest? [S/n] ",
+        "open_once": "No headset, abra o Lunacid VR uma vez (Biblioteca, Fontes desconhecidas), espere o menu, "
+                     "saia, e aperte Enter aqui...",
+        "failed": "Algo deu errado acima. Resolva o que a mensagem diz e rode o mesmo comando de novo: os passos "
+                  "prontos são pulados.",
+        "done": "Pronto! No headset: Biblioteca, filtro no alto, Fontes desconhecidas, Lunacid VR. Bom jogo.",
+    },
+}
+
+
+def language(env=None, system_locale=None):
+    """'pt' on a Portuguese computer, else 'en'. LUNA_LANG chooses."""
+    env = os.environ if env is None else env
+    if env.get("LUNA_LANG") in TEXT:
+        return env["LUNA_LANG"]
+    if system_locale is None:
+        try:
+            import locale
+            system_locale = locale.getlocale()[0]
+        except Exception:
+            system_locale = None
+    for value in (env.get("LC_ALL"), env.get("LANG"), system_locale):
+        if value and (value.lower().startswith("pt") or value.lower().startswith("portuguese")):
+            return "pt"
+    return "en"
+
+
+def start(steps, lang="en", tries=30):
+    """From nothing to the game on the Quest: setup, build, install (and saves), each skipped when done."""
+    t = TEXT[lang]
+    say, ask = steps.say, steps.ask
+    say(t["hello"])
+    say("")
+    if steps.is_ready():
+        say(t["step1_done"])
+    else:
+        say(t["step1"])
+        if steps.setup() or not steps.is_ready():
+            say(t["failed"])
+            return 1
+    say("")
+    if steps.has_build():
+        say(t["step2_done"])
+    else:
+        say(t["step2"])
+        if steps.build():
+            say(t["failed"])
+            return 1
+    say("")
+    say(t["step3"])
+    ask(t["plug"])
+    for _ in range(tries):
+        if steps.quest():
+            break
+        say(t["waiting"])
+        ask(t["plug"])
+    else:
+        say(t["failed"])
+        return 1
+    fresh = not steps.installed_before()
+    steps.install()
+    if fresh and steps.has_saves_backup():
+        if ask(t["restore_q"]).strip().lower() in ("", "y", "yes", "s", "sim"):
+            ask(t["open_once"])
+            steps.restore()
+    say("")
+    say(t["done"])
+    return 0
+
+
+class RealSteps:
+    """start() on this computer: the real setup, doctor, build, install and restore."""
+
+    def __init__(self, cfg_loader, profile):
+        self.cfg_loader = cfg_loader
+        self.profile = profile
+
+    def cfg(self):
+        return self.cfg_loader()
+
+    def say(self, *a):
+        print(*a)
+
+    def ask(self, q):
+        try:
+            return input(q)
+        except EOFError:
+            return ""
+
+    def setup(self):
+        from core import config
+        sm = _setup()
+        try:
+            sm.setup(self.cfg(), self.profile, config.LOCAL_FILE)
+        except sm.Problem as e:
+            print("FAIL: %s" % e)
+            return 1
+        return 0
+
+    def is_ready(self):
+        return exit_code(doctor(self.cfg(), self.profile)) == 0
+
+    def has_build(self):
+        try:
+            newest_build(self.cfg())
+            return True
+        except Problem:
+            return False
+
+    def build(self):
+        return build(cfg=self.cfg())
+
+    def _device(self):
+        cfg = self.cfg()
+        adb = adb_path(cfg)
+        if not adb:
+            raise Problem("adb not found: run 'python3 lunacid_vr.py doctor'")
+        run = adb_runner(adb)
+        return Device(run, serial=pick_serial(run))
+
+    def quest(self):
+        try:
+            dev = self._device()
+            dev.require()
+            return True
+        except Problem:
+            return False
+
+    def installed_before(self):
+        rc, out = self._device().shell("pm path %s" % PKG)
+        return rc == 0 and "package:" in out
+
+    def install(self):
+        install(self.cfg(), self._device())
+
+    def has_saves_backup(self):
+        try:
+            newest_backup(self.cfg())
+            return True
+        except Problem:
+            return False
+
+    def restore(self):
+        restore(self.cfg(), self._device())
+
+
+def _setup():
+    sys.path.insert(0, os.path.join(REPO, "tools", "setup"))
+    import setup_machine
+    return setup_machine
+
+
 def main(argv=None):
     import argparse
     from core import config, runner
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="command", required=True)
+    sub.add_parser("start", help="everything, from nothing to the game on the Quest (setup, build, install); "
+                                 "run it again to carry on")
+    sub.add_parser("setup", help="download and install everything a build needs (Unity, SteamCMD and the game, "
+                                 "AssetRipper, .NET), then write local.json")
     sub.add_parser("doctor", help="check this machine")
     b = sub.add_parser("build", help="build the APK (and the OBB on a full build)")
     b.add_argument("--fast", action="store_true", help="code only; reuses the last full build's assets")
@@ -508,6 +727,22 @@ def main(argv=None):
     args = ap.parse_args(argv)
     cfg = config.load()
     try:
+        if args.command == "start":
+            return start(RealSteps(config.load, runner.load_profile()), lang=language())
+        if args.command == "setup":
+            sm = _setup()
+            try:
+                sm.setup(cfg, runner.load_profile(), config.LOCAL_FILE)
+            except sm.Problem as e:
+                raise Problem(str(e))
+            cfg = config.load()
+            print("\n== doctor")
+            results = doctor(cfg, runner.load_profile())
+            for label, status, detail in results:
+                print("%-4s %-13s %s" % (status, label, detail))
+            if exit_code(results) == 0:
+                print("\nReady. Next: python3 lunacid_vr.py build (the first one takes one to two hours)")
+            return exit_code(results)
         if args.command == "doctor":
             results = doctor(cfg, runner.load_profile())
             for label, status, detail in results:
