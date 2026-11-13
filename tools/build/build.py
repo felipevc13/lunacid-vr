@@ -66,7 +66,7 @@ def write_build_info(out, commit, fast):
 
 def git_commit():
     try:
-        res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True)
+        res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True, errors="replace")
         return res.stdout.strip() if res.returncode == 0 else None
     except OSError:
         return None

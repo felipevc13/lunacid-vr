@@ -71,8 +71,7 @@ from core.progress import time_left  # noqa: E402  (one estimate for every tool)
 
 def progress_line(label, done, total, seconds=None, lang="en"):
     if total:
-        line = "%s: %d%% (%d %s %d MB)" % (label, done * 100 // total, done // MB, "de" if lang == "pt" else "of",
-                                         total // MB)
+        line = "%s: %d%% (%d of %d MB)" % (label, done * 100 // total, done // MB, total // MB)
         left = time_left(float(done) / total, seconds, lang)
         return line + (", " + left if left else "")
     return "%s: %d MB" % (label, done // MB)
@@ -337,7 +336,7 @@ def unity_progress(log, editor, minutes, total=UNITY_TOTAL, lang="en"):
     size = folder_size(editor) if editor and os.path.isdir(editor) else 0
     pct = min(99, size * 100 // total) if total else 0
     left = time_left(pct / 100.0, minutes * 60, lang)
-    gb = "%.1f GB %s %.0f GB" % (size / 1024.0 / MB, "de uns" if lang == "pt" else "of about", total / 1024.0 / MB)
+    gb = "%.1f GB of about %.0f GB" % (size / 1024.0 / MB, total / 1024.0 / MB)
     return "Unity: %s (%d%%), %s" % (gb, pct, left or ("%d min" % minutes))
 
 

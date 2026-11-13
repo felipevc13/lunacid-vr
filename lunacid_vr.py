@@ -48,7 +48,7 @@ def adb_runner(adb):
     """run(args) -> (exit code, output) for a real adb."""
     def run(args):
         try:
-            res = subprocess.run([adb] + list(args), capture_output=True, text=True, timeout=1800)
+            res = subprocess.run([adb] + list(args), capture_output=True, text=True, errors="replace", timeout=1800)
         except subprocess.TimeoutExpired:
             return 1, "adb timed out: %s" % " ".join(args)
         return res.returncode, (res.stdout + res.stderr).replace("\r", "")
@@ -269,7 +269,7 @@ def build_needed(last, head, diff):
 
 def git_head():
     try:
-        res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True)
+        res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True, errors="replace")
         return res.stdout.strip() if res.returncode == 0 else None
     except OSError:
         return None
@@ -277,7 +277,7 @@ def git_head():
 
 def git_diff(a, b):
     try:
-        res = subprocess.run(["git", "diff", "--name-only", a, b], cwd=REPO, capture_output=True, text=True)
+        res = subprocess.run(["git", "diff", "--name-only", a, b], cwd=REPO, capture_output=True, text=True, errors="replace")
     except OSError:
         return None
     return [line for line in res.stdout.splitlines() if line] if res.returncode == 0 else None
@@ -510,8 +510,8 @@ def disk_info(path):
         path = os.path.dirname(path)
     try:
         if sys.platform == "darwin":
-            mount = subprocess.run(["df", "-P", path], capture_output=True, text=True).stdout.splitlines()[-1].split()[-1]
-            return parse_diskutil(subprocess.run(["diskutil", "info", mount], capture_output=True, text=True).stdout)
+            mount = subprocess.run(["df", "-P", path], capture_output=True, text=True, errors="replace").stdout.splitlines()[-1].split()[-1]
+            return parse_diskutil(subprocess.run(["diskutil", "info", mount], capture_output=True, text=True, errors="replace").stdout)
         if os.name == "nt":
             import ctypes
             root = ctypes.create_unicode_buffer(260)
@@ -611,37 +611,11 @@ TEXT = {
         "crash": "Something unexpected happened: %s\nDetails in: %s\nRun the same command again; if it happens "
                  "again, send that file with your question.",
     },
-    "pt": {
-        "hello": "Lunacid VR: isto coloca o Lunacid no seu Quest, gerado a partir da sua cópia do jogo.\n"
-                 "São três passos. Pode parar quando quiser e rodar o mesmo comando de novo: ele continua de onde "
-                 "parou.",
-        "step1": "Passo 1 de 3: preparando este computador (Unity, os arquivos do jogo, ferramentas). De 30 a 90 "
-                 "minutos, quase tudo download.",
-        "step1_done": "Passo 1 de 3: este computador já está pronto.",
-        "step2": "Passo 2 de 3: gerando o jogo para o Quest. Da primeira vez leva de 1 a 2 horas. Deixe o computador "
-                 "na tomada e sem entrar em repouso.",
-        "step2_done": "Passo 2 de 3: o jogo já está atualizado.",
-        "step2_fast": "Passo 2 de 3: atualizando o jogo para a versão nova. De 25 a 45 minutos. Deixe o computador "
-                      "na tomada e sem entrar em repouso.",
-        "step3": "Passo 3 de 3: colocando o jogo no Quest.",
-        "plug": "Ligue o Quest neste computador com o cabo USB-C e coloque-o no rosto. Se ele pedir para Permitir a "
-                "depuração USB, marque Sempre permitir e escolha Permitir. Depois aperte Enter aqui...",
-        "waiting": "O Quest ainda não apareceu. Confira o cabo (o que veio com o Quest transmite dados), se o modo "
-                   "desenvolvedor está ligado no app Meta Horizon, e a janela Permitir depuração USB no headset.",
-        "restore_q": "Há saves de um backup anterior neste computador. Colocar no Quest? [S/n] ",
-        "open_once": "No headset, abra o Lunacid VR uma vez (Biblioteca, Fontes desconhecidas), espere o menu, "
-                     "saia, e aperte Enter aqui...",
-        "failed": "Algo deu errado acima. Resolva o que a mensagem diz e rode o mesmo comando de novo: os passos "
-                  "prontos são pulados.",
-        "done": "Pronto! No headset: Biblioteca, filtro no alto, Fontes desconhecidas, Lunacid VR. Bom jogo.",
-        "crash": "Algo inesperado aconteceu: %s\nDetalhes em: %s\nResolva o que der e rode o mesmo comando de "
-                 "novo; se acontecer de novo, envie esse arquivo junto com a sua pergunta.",
-    },
 }
 
 
 def language(env=None, system_locale=None):
-    """'pt' on a Portuguese computer, else 'en' (core/progress.py, shared by every tool). LUNA_LANG chooses."""
+    """Always English (core/progress.py)."""
     from core import progress
     return progress.language(env, system_locale)
 

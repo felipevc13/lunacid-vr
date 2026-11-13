@@ -82,6 +82,14 @@ def _keytool(cfg, keytool=None):
     return found
 
 
+def java_env(extra=None):
+    """Java tools answer in English whatever the computer's language: their output is parsed here (keytool in
+    Portuguese broke the build on a Windows notebook, 2026-11-13)."""
+    env = dict(os.environ, **(extra or {}))
+    env["JAVA_TOOL_OPTIONS"] = (env.get("JAVA_TOOL_OPTIONS", "") + " -Duser.language=en -Duser.country=US").strip()
+    return env
+
+
 def ensure(cfg, keytool=None):
     """The key in use; a new one when there is none."""
     info = load(cfg)
@@ -93,7 +101,7 @@ def ensure(cfg, keytool=None):
     subprocess.run([_keytool(cfg, keytool), "-genkeypair", "-keystore", info["path"], "-storetype", "PKCS12",
                     "-storepass", password, "-keypass", password, "-alias", info["alias"], "-keyalg", "RSA",
                     "-keysize", "2048", "-validity", "10000", "-dname", "CN=Lunacid VR port, O=local build"],
-                   check=True, capture_output=True)
+                   check=True, capture_output=True, env=java_env())
     _save(cfg, info)
     return info
 
@@ -101,7 +109,8 @@ def ensure(cfg, keytool=None):
 def fingerprint(info, cfg=None, keytool=None):
     """SHA-256 of the key's certificate, lowercase hex."""
     out = subprocess.run([_keytool(cfg or {}, keytool), "-list", "-v", "-keystore", info["path"], "-storepass",
-                          info["password"], "-alias", info["alias"]], check=True, capture_output=True, text=True).stdout
+                          info["password"], "-alias", info["alias"]], check=True, capture_output=True, text=True, errors="replace",
+                         env=java_env()).stdout
     m = re.search(r"SHA256:\s*([0-9A-Fa-f:]+)", out)
     if not m:
         raise RuntimeError("no SHA-256 in keytool's output for %s" % info["path"])
@@ -120,10 +129,10 @@ def apk_sha256(apk, cfg):
     if not tools:
         raise RuntimeError("no build-tools in the Android SDK (%s)" % sdk)
     signer = os.path.join(sdk, "build-tools", tools[-1], "apksigner.bat" if os.name == "nt" else "apksigner")
-    env = dict(os.environ)
+    env = java_env()
     if cfg.get("jdk"):
         env["JAVA_HOME"] = cfg["jdk"]
-    out = subprocess.run([signer, "verify", "--print-certs", apk], capture_output=True, text=True, env=env)
+    out = subprocess.run([signer, "verify", "--print-certs", apk], capture_output=True, text=True, errors="replace", env=env)
     return parse_apk_sha256(out.stdout + out.stderr)
 
 

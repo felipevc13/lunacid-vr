@@ -25,8 +25,6 @@ class TestExport(unittest.TestCase):
     def test_line(self):
         self.assertEqual(progress.export_line(2880, 7297, seconds=120),
                          "Extracting the game: 39% (2880 of 7297), about 3 min left")
-        self.assertEqual(progress.export_line(2880, 7297, seconds=120, lang="pt"),
-                         "Extraindo o jogo: 39% (2880 de 7297), faltam uns 3 min")
 
 
 class TestBuild(unittest.TestCase):
@@ -93,9 +91,10 @@ class TestBuild(unittest.TestCase):
         w.feed("orting b\n")
         self.assertIn("2 of 100", w.line(minutes=1))
 
-    def test_portuguese(self):
+    def test_english_on_a_portuguese_computer(self):
+        # Felipe, 2026-11-13: everything in English.
         text = "".join("Start importing Assets/a%d.png using Guid(x)\n" % i for i in range(2000))
-        self.assertIn("importando o projeto", self.watch(text, lang="pt"))
+        self.assertIn("importing the project", self.watch(text, lang=progress.language({"LANG": "pt_BR"}, "pt_BR")))
 
     def test_nothing_yet(self):
         self.assertIn("starting Unity", self.watch(""))
@@ -195,13 +194,12 @@ class TestFriendlyErrors(unittest.TestCase):
 class TestTimeLeftLivesHere(unittest.TestCase):
     def test_shared(self):
         self.assertEqual(progress.time_left(0.25, 60), "about 3 min left")
-        self.assertEqual(progress.time_left(0.25, 60, "pt"), "faltam uns 3 min")
 
 
-class TestLanguageLivesHere(unittest.TestCase):
-    def test_same_rule_for_every_tool(self):
-        self.assertEqual(progress.language({"LANG": "pt_BR.UTF-8"}, None), "pt")
-        self.assertEqual(progress.language({"LUNA_LANG": "en", "LANG": "pt_BR"}, "pt_BR"), "en")
+class TestAlwaysEnglish(unittest.TestCase):
+    def test_every_computer(self):
+        # Felipe, 2026-11-13: "everything in English"; most users are outside Brazil.
+        self.assertEqual(progress.language({"LANG": "pt_BR.UTF-8"}, "pt_BR"), "en")
         self.assertEqual(progress.language({}, None), "en")
 
 

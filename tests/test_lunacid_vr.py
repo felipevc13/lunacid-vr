@@ -425,6 +425,20 @@ def adb_with(devices, serials):
     return run
 
 
+class TestAdbInAnyLanguage(unittest.TestCase):
+    def test_output_in_the_windows_code_page_is_read(self):
+        import stat
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        fake = os.path.join(tmp, "adb")
+        with open(fake, "wb") as fh:
+            fh.write(b"#!/bin/sh\nprintf 'n\\xe3o encontrado\\n'\nexit 1\n")
+        os.chmod(fake, os.stat(fake).st_mode | stat.S_IXUSR)
+        rc, out = lunacid_vr.adb_runner(fake)(["get-state"])
+        self.assertEqual(rc, 1)
+        self.assertIn("encontrado", out)
+
+
 class TestWhichQuest(unittest.TestCase):
     """2026-11-12: the same Quest on USB and on Wi-Fi made adb answer "more than one device" and backup refused."""
 

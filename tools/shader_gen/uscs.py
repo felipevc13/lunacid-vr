@@ -117,7 +117,7 @@ def uscs(p, dotnet, argv):
     shutil.copy(os.path.join(p["bin"], "classdata.tpk"), p["run"])
     env = dict(os.environ, DOTNET_ROOT=os.path.dirname(dotnet))
     r = subprocess.run([dotnet, os.path.join(p["bin"], "USCSandbox.dll")] + argv, cwd=p["run"], env=env,
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, errors="replace")
     for f in os.listdir(p["run"]):
         if f.startswith("dbg_entry"):
             os.remove(os.path.join(p["run"], f))
@@ -160,7 +160,7 @@ def decompile(args):
     from core import progress
     lang = progress.language()
     for i, name in enumerate(wanted, 1):
-        progress.live(("Shaders: %d de %d" if lang == "pt" else "Shaders: %d of %d") % (i, len(wanted)))
+        progress.live("Shaders: %d of %d" % (i, len(wanted)))
         e = index[name]
         r = uscs(p, dotnet, ["null", os.path.join(data, e["file"]), str(e["path_id"])])
         made = os.path.join(p["run"], "out", name + ".shader")

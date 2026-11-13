@@ -115,5 +115,25 @@ class TestKeystore(unittest.TestCase):
             self.assertIn(name, cs)
 
 
+class TestWindowsInPortuguese(unittest.TestCase):
+    """2026-11-13 on the notebook: keytool answered in Portuguese in the Windows code page ('Proprietário'),
+    reading it as UTF-8 failed on byte 0xe7, and the build died: 'expected string or bytes-like object, got
+    NoneType'. Output from other programs is read whatever its encoding."""
+
+    def test_fingerprint_from_a_portuguese_keytool(self):
+        import stat
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        fake = os.path.join(tmp, "keytool")
+        text = ("Propriet\xe1rio: CN=Lunacid VR port\nV\xe1lido de: ter\xe7a\n"
+                "SHA256: 3A:3C:03:99:CC:76:6D:13:92:66:9B:38:94:03:31:87:E2:2E:2C:57:7A:9F:1F:15:C9:E5:61:DC:42:98:6D:6E\n")
+        with open(fake, "wb") as fh:
+            fh.write(b"#!/bin/sh\ncat <<'EOF'\n" + text.encode("cp1252") + b"EOF\n")
+        os.chmod(fake, os.stat(fake).st_mode | stat.S_IXUSR)
+        info = {"path": "k", "password": "p", "alias": "a"}
+        self.assertEqual(keystore.fingerprint(info, {}, keytool=fake),
+                         "3a3c0399cc766d1392669b3894033187e22e2c577a9f1f15c9e561dc42986d6e")
+
+
 if __name__ == "__main__":
     unittest.main()

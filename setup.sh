@@ -14,19 +14,12 @@
 set -e
 REPO_URL="https://github.com/felipevc13/lunacid-vr.git"
 
-PT=0
-case "${LANG:-}" in pt*) PT=1 ;; esac
-case "$(defaults read -g AppleLocale 2>/dev/null)" in pt*) PT=1 ;; esac
+say() { printf '\033[36m%s\033[0m\n' "$1"; }
 
-say() {
-    if [ "$PT" = 1 ]; then printf '\033[36m%s\033[0m\n' "$2"; else printf '\033[36m%s\033[0m\n' "$1"; fi
-}
-
-say "Lunacid VR: getting this computer ready." "Lunacid VR: preparando este computador."
+say "Lunacid VR: getting this computer ready."
 
 if ! xcode-select -p >/dev/null 2>&1 || ! /usr/bin/python3 --version >/dev/null 2>&1; then
-    say "Installing Apple's command line tools (they bring Git and Python). A window opens: choose Install and wait." \
-        "Instalando as ferramentas de linha de comando da Apple (trazem o Git e o Python). Uma janela abre: escolha Instalar e espere."
+    say "Installing Apple's command line tools (they bring Git and Python). A window opens: choose Install and wait."
     xcode-select --install >/dev/null 2>&1 || true
     until xcode-select -p >/dev/null 2>&1 && /usr/bin/python3 --version >/dev/null 2>&1; do sleep 10; done
 fi
@@ -40,7 +33,7 @@ else
     if [ -d "$DIR/.git" ]; then
         git -C "$DIR" pull --ff-only
     else
-        say "Downloading Lunacid VR..." "Baixando o Lunacid VR..."
+        say "Downloading Lunacid VR..."
         git clone "$REPO_URL" "$DIR"
     fi
 fi

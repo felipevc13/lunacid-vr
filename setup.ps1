@@ -12,11 +12,7 @@
 
 $ErrorActionPreference = "Stop"
 $RepoUrl = "https://github.com/felipevc13/lunacid-vr.git"
-$Pt = (Get-Culture).Name -like "pt*"
-
-function Say($en, $pt) {
-    if ($Pt) { Write-Host $pt -ForegroundColor Cyan } else { Write-Host $en -ForegroundColor Cyan }
-}
+function Say($text) { Write-Host $text -ForegroundColor Cyan }
 
 function Refresh-Path {
     # Programs installed a moment ago are found without reopening the window.
@@ -26,8 +22,8 @@ function Refresh-Path {
 
 function Have($name) { [bool](Get-Command $name -ErrorAction SilentlyContinue) }
 
-function Install-Package($id, $en, $pt) {
-    Say "Installing $en (Windows may ask for permission: choose Yes)..." "Instalando $pt (o Windows pode pedir permissao: escolha Sim)..."
+function Install-Package($id, $name) {
+    Say "Installing $name (Windows may ask for permission: choose Yes)..."
     winget install --id $id -e --silent --accept-source-agreements --accept-package-agreements
     Refresh-Path
 }
@@ -45,30 +41,27 @@ function Find-Python {
     return $null
 }
 
-Say "Lunacid VR: getting this computer ready." "Lunacid VR: preparando este computador."
+Say "Lunacid VR: getting this computer ready."
 
 if (-not (Have "winget")) {
-    Say "This needs Microsoft's App Installer (it brings winget). Opening the Microsoft Store: install it, then paste the same line again." `
-        "Falta o Instalador de Aplicativo da Microsoft (ele traz o winget). Abrindo a Microsoft Store: instale e cole a mesma linha de novo."
+    Say "This needs Microsoft's App Installer (it brings winget). Opening the Microsoft Store: install it, then paste the same line again."
     Start-Process "ms-windows-store://pdp/?productid=9NBLGGH4NNS1"
     return
 }
 
-if (-not (Have "git")) { Install-Package "Git.Git" "Git" "o Git" }
+if (-not (Have "git")) { Install-Package "Git.Git" "Git" }
 if (-not (Have "git")) {
-    Say "Git did not install. Close this window, open PowerShell again and paste the same line." `
-        "O Git nao foi instalado. Feche esta janela, abra o PowerShell de novo e cole a mesma linha."
+    Say "Git did not install. Close this window, open PowerShell again and paste the same line."
     return
 }
 
 $Python = Find-Python
 if (-not $Python) {
-    Install-Package "Python.Python.3.12" "Python" "o Python"
+    Install-Package "Python.Python.3.12" "Python"
     $Python = Find-Python
 }
 if (-not $Python) {
-    Say "Python did not install. Close this window, open PowerShell again and paste the same line." `
-        "O Python nao foi instalado. Feche esta janela, abra o PowerShell de novo e cole a mesma linha."
+    Say "Python did not install. Close this window, open PowerShell again and paste the same line."
     return
 }
 
@@ -80,7 +73,7 @@ if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot "lunacid_vr.py"))) {
     if (Test-Path (Join-Path $Dir ".git")) {
         git -C $Dir pull --ff-only
     } else {
-        Say "Downloading Lunacid VR..." "Baixando o Lunacid VR..."
+        Say "Downloading Lunacid VR..."
         git clone $RepoUrl $Dir
     }
 }

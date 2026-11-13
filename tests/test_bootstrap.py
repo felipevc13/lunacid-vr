@@ -47,9 +47,9 @@ class TestWindows(unittest.TestCase):
         self.assertNotIn("AsSecureString", self.ps)
         self.assertNotRegex(self.ps.lower(), r"read-host[^\n]*(password|senha)")
 
-    def test_speaks_portuguese_too(self):
-        self.assertIn("Get-Culture", self.ps)
-        self.assertIn("Instalando", self.ps)
+    def test_english_only(self):
+        self.assertNotIn("Get-Culture", self.ps)
+        self.assertNotIn("Instalando", self.ps)
 
 
 class TestMac(unittest.TestCase):
@@ -70,9 +70,9 @@ class TestMac(unittest.TestCase):
     def test_clones_or_uses_the_copy_it_is_in(self):
         self.assertIn("git clone", self.sh)
 
-    def test_speaks_portuguese_too(self):
-        self.assertIn("AppleLocale", self.sh)
-        self.assertIn("Instalando", self.sh)
+    def test_english_only(self):
+        self.assertNotIn("AppleLocale", self.sh)
+        self.assertNotIn("Instalando", self.sh)
 
 
 class TestUpdatingIsTheSameLine(unittest.TestCase):

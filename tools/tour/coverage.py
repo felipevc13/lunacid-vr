@@ -21,7 +21,7 @@ GOOD = 0.90
 
 def ssim(a, b):
     out = subprocess.run(["ffmpeg", "-v", "info", "-i", a, "-i", b, "-lavfi", "ssim", "-f", "null", "-"],
-                         capture_output=True, text=True).stderr
+                         capture_output=True, text=True, errors="replace").stderr
     m = re.search(r"All:([0-9.]+)", out)
     return float(m.group(1)) if m else None
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-How far the long steps are, read from what each tool already writes, in the computer's language (English unless the
-computer is in Portuguese; LUNA_LANG chooses). One updating line, so a step never looks stopped.
+How far the long steps are, read from what each tool already writes, in English. One updating line, so a step
+never looks stopped.
 
 - AssetRipper's export: "ExportProgress : (2880/7297) ..." in its own log.
 - Unity's first import: one "Start importing <path>" per file; the total is the project's files.
@@ -16,19 +16,7 @@ MB = 1024 * 1024
 
 
 def language(env=None, system_locale=None):
-    """'pt' on a Portuguese computer, else 'en'. LUNA_LANG chooses."""
-    env = os.environ if env is None else env
-    if env.get("LUNA_LANG") in ("en", "pt"):
-        return env["LUNA_LANG"]
-    if system_locale is None:
-        try:
-            import locale
-            system_locale = locale.getlocale()[0]
-        except Exception:
-            system_locale = None
-    for value in (env.get("LC_ALL"), env.get("LANG"), system_locale):
-        if value and (value.lower().startswith("pt") or value.lower().startswith("portuguese")):
-            return "pt"
+    """Everything is in English (Felipe, 2026-11-13). Kept so callers need not change."""
     return "en"
 
 
@@ -38,12 +26,12 @@ def time_left(fraction, seconds, lang="en"):
         return ""
     left = seconds * (1 - fraction) / fraction
     if left < 60:
-        return "menos de um minuto" if lang == "pt" else "less than a minute left"
+        return "less than a minute left"
     minutes = int(round(left / 60.0))
     if minutes >= 120:
         hours = "%.1f" % (minutes / 60.0)
-        return ("faltam umas %s h" % hours.replace(".", ",")) if lang == "pt" else "about %s h left" % hours
-    return ("faltam uns %d min" % minutes) if lang == "pt" else "about %d min left" % minutes
+        return "about %s h left" % hours
+    return "about %d min left" % minutes
 
 
 def live(line, end=False):
@@ -65,10 +53,7 @@ def export_progress(text):
 def export_line(done, total, seconds=None, lang="en"):
     pct = done * 100 // total if total else 0
     left = time_left(float(done) / total if total else 0, seconds, lang)
-    if lang == "pt":
-        line = "Extraindo o jogo: %d%% (%d de %d)" % (pct, done, total)
-    else:
-        line = "Extracting the game: %d%% (%d of %d)" % (pct, done, total)
+    line = "Extracting the game: %d%% (%d of %d)" % (pct, done, total)
     return line + (", " + left if left else "")
 
 
@@ -113,13 +98,6 @@ WORDS = {
            "scripts": "Build: compiling the scripts: %d%% (%d of %d), %s",
            "pack": "Build: packaging: %d%% (%d of %d), %s",
            "gradle": "Build: making the APK, almost done (%d min)"},
-    "pt": {"start": "Build: abrindo o Unity... (%d min)",
-           "import": "Build: importando o projeto, %d%% (%d de %d), %s",
-           "scene": "Build: cena %d de %d (%d min)",
-           "shaders": "Build: compilando shaders (%d até agora), %d min",
-           "scripts": "Build: compilando os scripts: %d%% (%d de %d), %s",
-           "pack": "Build: empacotando: %d%% (%d de %d), %s",
-           "gradle": "Build: montando o APK, quase pronto (%d min)"},
 }
 
 
@@ -215,11 +193,7 @@ def friendly(main, log_dir=None, lang=None, step=None):
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(traceback.format_exc())
         what = step or os.path.basename(sys.argv[0] or "the tool")
-        if lang == "pt":
-            msg = ("\nAlgo inesperado aconteceu em %s: %s\nDetalhes em: %s\nRode o mesmo comando de novo; se "
-                   "acontecer de novo, envie esse arquivo junto com a sua pergunta." % (what, e, path))
-        else:
-            msg = ("\nSomething unexpected happened in %s: %s\nDetails in: %s\nRun the same command again; if it "
+        msg = ("\nSomething unexpected happened in %s: %s\nDetails in: %s\nRun the same command again; if it "
                    "happens again, send that file with your question." % (what, e, path))
         print(msg)
         sys.exit(1)

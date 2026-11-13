@@ -139,12 +139,10 @@ class TestStart(unittest.TestCase):
         run_start(s)
         self.assertIn("Unknown sources", s.said[-1] + " ".join(s.said[-3:]))
 
-    def test_portuguese(self):
+    def test_english_on_a_portuguese_computer(self):
         s = Steps()
-        run_start(s, lang="pt")
-        text = "\n".join(s.said)
-        self.assertIn("Passo 1 de 3", text)
-        self.assertIn("Fontes desconhecidas", text)
+        run_start(s, lang=lunacid_vr.language({"LANG": "pt_BR.UTF-8"}, "pt_BR"))
+        self.assertIn("Step 1 of 3", "\n".join(s.said))
 
 
 class TestNoTracebacks(unittest.TestCase):
@@ -158,11 +156,11 @@ class TestNoTracebacks(unittest.TestCase):
         def boom():
             raise OSError("[WinError 740] A operação solicitada requer elevação")
         s.setup = boom
-        rc = lunacid_vr.start(s, lang="pt", log_dir=tmp)
+        rc = lunacid_vr.start(s, lang="en", log_dir=tmp)
         self.assertNotEqual(rc, 0)
         text = "\n".join(s.said)
         self.assertIn("WinError 740", text)
-        self.assertIn("rode o mesmo comando de novo", text)
+        self.assertIn("Run the same command again", text)
         logs = os.listdir(tmp)
         self.assertEqual(len(logs), 1)
         with open(os.path.join(tmp, logs[0]), encoding="utf-8") as fh:
@@ -170,17 +168,11 @@ class TestNoTracebacks(unittest.TestCase):
 
 
 class TestLanguage(unittest.TestCase):
-    def test_portuguese_computers(self):
-        self.assertEqual(lunacid_vr.language({"LANG": "pt_BR.UTF-8"}, None), "pt")
-        self.assertEqual(lunacid_vr.language({}, "pt_BR"), "pt")
-        self.assertEqual(lunacid_vr.language({}, "Portuguese_Brazil"), "pt")
-
-    def test_everything_else_is_english(self):
-        self.assertEqual(lunacid_vr.language({"LANG": "en_US.UTF-8"}, None), "en")
-        self.assertEqual(lunacid_vr.language({}, None), "en")
-
-    def test_the_person_can_choose(self):
-        self.assertEqual(lunacid_vr.language({"LUNA_LANG": "en", "LANG": "pt_BR.UTF-8"}, "pt_BR"), "en")
+    def test_always_english(self):
+        # Felipe, 2026-11-13: everything in English, whatever the computer's language.
+        self.assertEqual(lunacid_vr.language({"LANG": "pt_BR.UTF-8"}, None), "en")
+        self.assertEqual(lunacid_vr.language({}, "Portuguese_Brazil"), "en")
+        self.assertNotIn("pt", lunacid_vr.TEXT)
 
 
 class TestStartIsACommand(unittest.TestCase):
