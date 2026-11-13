@@ -61,12 +61,30 @@ def arch():
 # ---------- small helpers
 
 MB = 1024 * 1024
+LANG = "en"     # setup() sets it from the computer's language; the progress lines follow it
 UNITY_TOTAL = 9 * 1024 * MB    # Unity 6000.0.85f1 with Android, OpenJDK and the SDK/NDK, roughly, installed
 
 
-def progress_line(label, done, total):
+def time_left(fraction, seconds, lang="en"):
+    """'about 3 min left' from how far it is (0..1) and how long it took; '' when it is too early to guess."""
+    if not seconds or seconds < 5 or fraction <= 0.01 or fraction >= 1:
+        return ""
+    left = seconds * (1 - fraction) / fraction
+    if left < 60:
+        return "menos de um minuto" if lang == "pt" else "less than a minute left"
+    minutes = int(round(left / 60.0))
+    if minutes >= 120:
+        hours = "%.1f" % (minutes / 60.0)
+        return ("faltam umas %s h" % hours.replace(".", ",")) if lang == "pt" else "about %s h left" % hours
+    return ("faltam uns %d min" % minutes) if lang == "pt" else "about %d min left" % minutes
+
+
+def progress_line(label, done, total, seconds=None, lang="en"):
     if total:
-        return "%s: %d%% (%d of %d MB)" % (label, done * 100 // total, done // MB, total // MB)
+        line = "%s: %d%% (%d %s %d MB)" % (label, done * 100 // total, done // MB, "de" if lang == "pt" else "of",
+                                         total // MB)
+        left = time_left(float(done) / total, seconds, lang)
+        return line + (", " + left if left else "")
     return "%s: %d MB" % (label, done // MB)
 
 
@@ -76,15 +94,16 @@ def _live(line, end=False):
     sys.stdout.flush()
 
 
-def download(url, dest, label=None, say=None):
+def download(url, dest, label=None, say=None, lang=None):
     """Fetch url to dest (a temporary name first, so a cut download never looks finished), showing how far it is."""
     label = label or os.path.basename(dest)
+    lang = lang or LANG
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     part = dest + ".part"
     req = urllib.request.Request(url, headers={"User-Agent": "lunacid-vr-setup"})
     with urllib.request.urlopen(req, timeout=120) as resp, open(part, "wb") as fh:
         total = int(resp.headers.get("Content-Length") or 0)
-        done, shown = 0, -1
+        done, shown, began = 0, -1, time.time()
         while True:
             chunk = resp.read(1 << 20)
             if not chunk:
@@ -94,11 +113,11 @@ def download(url, dest, label=None, say=None):
             step = done * 20 // total if total else done // (10 * MB)
             if step != shown:
                 shown = step
-                (say or _live)(progress_line(label, done, total))
+                (say or _live)(progress_line(label, done, total, time.time() - began, lang))
     if say:
-        say(progress_line(label, done, total or done))
+        say(progress_line(label, done, total or done, lang=lang))
     else:
-        _live(progress_line(label, done, total or done), end=True)
+        _live(progress_line(label, done, total or done, lang=lang), end=True)
     os.replace(part, dest)
 
 
@@ -315,17 +334,21 @@ def folder_size(path):
     return total
 
 
-def unity_progress(log, editor, minutes, total=UNITY_TOTAL):
+def unity_progress(log, editor, minutes, total=UNITY_TOTAL, lang="en"):
     """How far Unity's install is: Unity Hub's own percentage when its output has one, else what is installed so far
     against the usual size (never 100% before it is done)."""
     if log and os.path.exists(log):
         with open(log, encoding="utf-8", errors="replace") as fh:
             found = re.findall(r"(\d{1,3})(?:\.\d+)?\s*%", fh.read()[-4000:])
         if found:
-            return "Unity: %s%% (%d min)" % (found[-1], minutes)
+            pct = min(99, int(found[-1]))
+            left = time_left(pct / 100.0, minutes * 60, lang)
+            return "Unity: %d%%%s" % (pct, ", " + left if left else "")
     size = folder_size(editor) if editor and os.path.isdir(editor) else 0
     pct = min(99, size * 100 // total) if total else 0
-    return "Unity: %.1f GB of about %.0f GB (%d%%), %d min" % (size / 1024.0 / MB, total / 1024.0 / MB, pct, minutes)
+    left = time_left(pct / 100.0, minutes * 60, lang)
+    gb = "%.1f GB %s %.0f GB" % (size / 1024.0 / MB, "de uns" if lang == "pt" else "of about", total / 1024.0 / MB)
+    return "Unity: %s (%d%%), %s" % (gb, pct, left or ("%d min" % minutes))
 
 
 def editor_folder(unity, system):
@@ -458,7 +481,9 @@ def update_local(path, found):
 
 # ---------- all of it
 
-def setup(cfg, profile, local_path, system=None, cpu=None, say=print, ask=input):
+def setup(cfg, profile, local_path, system=None, cpu=None, say=print, ask=input, lang="en"):
+    global LANG
+    LANG = lang
     system = system or platform.system()
     cpu = cpu or arch()
     if system not in ("Windows", "Darwin"):
@@ -516,7 +541,7 @@ def setup(cfg, profile, local_path, system=None, cpu=None, say=print, ask=input)
         editor = editor_folder(cfg.get("unity"), system)
         while unity_proc.poll() is None:
             time.sleep(15)
-            _live(unity_progress(log, editor, int((time.time() - began) / 60)))
+            _live(unity_progress(log, editor, int((time.time() - began) / 60), lang=lang))
         _live("Unity: done", end=True)
         if unity_proc.returncode != 0:
             raise Problem("Unity Hub could not install Unity %s (exit code %s): see %s. Open Unity Hub, sign in, and "

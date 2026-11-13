@@ -340,6 +340,9 @@ class TestProgress(Base):
             self.assertEqual(len(fh.read()), 3 * 1024 * 1024 + 7)
         self.assertTrue(any("100%" in line and "AssetRipper" in line for line in said), said)
         self.assertTrue(any("MB" in line for line in said), said)
+        said = []
+        sm.download("file://" + src, dest, label="AssetRipper", say=said.append, lang="pt")
+        self.assertIn("de", said[-1].split())      # the last line in the computer's language too
 
     def test_percentage_line(self):
         self.assertEqual(sm.progress_line("SteamCMD", 5 * 1024 * 1024, 20 * 1024 * 1024),
@@ -351,7 +354,7 @@ class TestProgress(Base):
         write(log, b"Downloading Unity 6000.0.85f1...\nprogress: 12%\nprogress: 47.5%\n")
         line = sm.unity_progress(log, os.path.join(self.tmp, "Editor"), minutes=12)
         self.assertIn("47%", line)
-        self.assertIn("12 min", line)
+        self.assertIn("about 14 min left", line)     # 47% in 12 min
 
     def test_unity_otherwise_measures_what_is_installed(self):
         log = os.path.join(self.tmp, "unity_install.log")
@@ -360,7 +363,23 @@ class TestProgress(Base):
         write(os.path.join(editor, "a.bin"), b"x" * (2 * 1024 * 1024))
         line = sm.unity_progress(log, editor, minutes=3, total=8 * 1024 * 1024)
         self.assertIn("25%", line)
-        self.assertIn("3 min", line)
+        self.assertIn("about 9 min left", line)      # 25% in 3 min
+
+    def test_how_long_is_left(self):
+        # 5 of 20 MB in 60 s: 15 MB more at that speed is 180 s.
+        self.assertEqual(sm.progress_line("Unity", 5 * 1024 * 1024, 20 * 1024 * 1024, seconds=60),
+                         "Unity: 25% (5 of 20 MB), about 3 min left")
+        self.assertEqual(sm.progress_line("Unity", 5 * 1024 * 1024, 20 * 1024 * 1024, seconds=60, lang="pt"),
+                         "Unity: 25% (5 de 20 MB), faltam uns 3 min")
+        self.assertIn("less than a minute", sm.progress_line("x", 19 * 1024 * 1024, 20 * 1024 * 1024, seconds=60))
+        self.assertNotIn("left", sm.progress_line("x", 1, 20 * 1024 * 1024, seconds=1))   # too early to guess
+
+    def test_unity_says_how_long_is_left(self):
+        log = os.path.join(self.tmp, "unity_install.log")
+        write(log, b"progress: 40%\n")
+        # 40% in 20 min: 60% more at that pace is 30 min.
+        self.assertIn("about 30 min left", sm.unity_progress(log, None, minutes=20))
+        self.assertIn("faltam uns 30 min", sm.unity_progress(log, None, minutes=20, lang="pt"))
 
     def test_unity_never_says_100_before_it_is_done(self):
         editor = os.path.join(self.tmp, "Editor")

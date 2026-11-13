@@ -666,7 +666,7 @@ class RealSteps:
         from core import config
         sm = _setup()
         try:
-            sm.setup(self.cfg(), self.profile, config.LOCAL_FILE)
+            sm.setup(self.cfg(), self.profile, config.LOCAL_FILE, lang=language())
         except sm.Problem as e:
             print("FAIL: %s" % e)
             return 1
@@ -753,7 +753,7 @@ def main(argv=None):
         if args.command == "setup":
             sm = _setup()
             try:
-                sm.setup(cfg, runner.load_profile(), config.LOCAL_FILE)
+                sm.setup(cfg, runner.load_profile(), config.LOCAL_FILE, lang=language())
             except sm.Problem as e:
                 raise Problem(str(e))
             cfg = config.load()
