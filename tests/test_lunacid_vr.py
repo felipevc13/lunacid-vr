@@ -33,6 +33,7 @@ class FakeQuest:
         self.corrupt_push = False       # same size, different bytes
         self.installed = True
         self.files_dir = True           # the game made its files folder (it runs once after an install)
+        self.other_key = False          # the installed app was signed by another computer's key
         self.modes = {}                 # adb push leaves 644 owned by shell; the game (another uid) cannot write
 
     def __call__(self, args):
@@ -61,6 +62,10 @@ class FakeQuest:
             self.files[remote] = data[:-1] if self.short_push else data
             return 0, "1 file pushed"
         if cmd == "install":
+            if self.other_key:
+                return 1, ("Performing Streamed Install\nadb: failed to install x.apk: Failure "
+                           "[INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package com.AkumaKira.LunacidVR "
+                           "signatures do not match newer version; ignoring!]")
             if self.install_wipes_saves:
                 self.files = {k: v for k, v in self.files.items() if not k.endswith(".MIDNIGHT")}
             return 0, "Performing Streamed Install\nSuccess"
@@ -264,6 +269,20 @@ class TestInstall(Base):
         with self.assertRaises(lunacid_vr.Problem) as ctx:
             self.install(quest)
         self.assertIn(os.path.join("backups", "20261112_2300"), str(ctx.exception))
+
+    def test_installed_by_another_computer_explains_the_way(self):
+        # The notebook's APK is signed by the notebook's key; the Quest has the Mac's build. adb says
+        # INSTALL_FAILED_UPDATE_INCOMPATIBLE: the person must back up, uninstall, install, open once, restore.
+        self.make_build("20261112_1437")
+        quest = FakeQuest(SAVES)
+        quest.other_key = True
+        with self.assertRaises(lunacid_vr.Problem) as ctx:
+            self.install(quest)
+        msg = str(ctx.exception)
+        for words in ("another computer", "adb uninstall com.AkumaKira.LunacidVR", "restore",
+                      os.path.join("backups", "20261112_2300")):
+            self.assertIn(words, msg)
+        self.assertFalse(any("uninstall" in w for w in quest.adb_words()))
 
     def test_apk_signed_by_another_key_is_refused(self):
         self.make_build("20261112_1437")

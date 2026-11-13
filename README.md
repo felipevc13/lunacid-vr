@@ -128,9 +128,34 @@ SNAP ANGLE and TURN SPEED. L/R HAND swaps attack and block.
 ## Keep your signing key
 
 The first build makes a signing key in `<work>/keystore`. Android only updates an installed app with an APK
-signed by the same key. On another computer without this folder, you would have to uninstall the port first and
-lose your saves. Every `backup` and `install` copies the key into the backup, but **also copy
+signed by the same key. Every `backup` and `install` copies the key into the backup, but **also copy
 `<work>/keystore` somewhere off this machine.**
+
+Put that folder in `<work>/keystore` on a new computer before its first build, and its builds update the installed
+game as usual. Without it, the new computer makes its own key. Then you move your saves by hand once, as the next
+section shows.
+
+## Moving to another computer, or reinstalling
+
+`install` stops and shows these steps when the game on the Quest was built on another computer:
+**"the game on the Quest was built on another computer (signed by another key)"**. They also work for a clean
+reinstall.
+
+1. **Back up the saves:** `python3 lunacid_vr.py backup` (`install` has just made one too). Check the folder it
+   names holds your `SAVE_*.MIDNIGHT` files.
+2. **Uninstall the game yourself:** `adb uninstall com.AkumaKira.LunacidVR`. This deletes the game, its saves and
+   its game data (OBB) from the Quest. `lunacid_vr.py` never does it for you.
+3. **Install:** `python3 lunacid_vr.py install`. The game data is copied again, so this takes a few minutes.
+4. **Open the game once on the Quest, then quit.** The game makes its saves folder on the first launch, and
+   `restore` needs it.
+5. **Restore:** `python3 lunacid_vr.py restore`. It puts back the newest backup holding a game save, makes the files
+   writable by the game, and checks each one. To use an older backup, name its folder:
+   `python3 lunacid_vr.py restore <work>/backups/<date-time>`.
+6. **Check:** load your save in the game and save once.
+
+To bring saves from another computer, copy its backup folder (`<work>/backups/<date-time>/`, the whole folder) into
+`<work>/backups/` on this one, then restore. `restore` only copies saves, so any computer can restore onto any
+install.
 
 ## Commands
 

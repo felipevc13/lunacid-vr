@@ -293,6 +293,15 @@ def install(cfg, dev, apk=None, obb=None, stamp=None, signature_check=None, say=
         push_obb(dev, obb, say)
     say("installing %s..." % apk)
     rc, out = dev.run(["install", "-r", apk])
+    if "INSTALL_FAILED_UPDATE_INCOMPATIBLE" in out:
+        raise Problem(
+            "the game on the Quest was built on another computer (signed by another key), so Android will not "
+            "update it. Your saves are backed up in %s. To switch to this computer's build:\n"
+            "  adb uninstall com.AkumaKira.LunacidVR      (deletes the game and its saves on the Quest)\n"
+            "  python3 lunacid_vr.py install\n"
+            "  open the game once on the Quest, quit\n"
+            "  python3 lunacid_vr.py restore\n"
+            "See 'Moving to another computer, or reinstalling' in the README." % folder)
     if rc != 0 or "Success" not in out:
         raise Problem("adb install -r failed: %s (the saves are in %s)" % (out.strip()[-300:], folder))
     now = {os.path.basename(p): s for p, s in dev.sizes(SAVES_DIR, ".MIDNIGHT").items()}
