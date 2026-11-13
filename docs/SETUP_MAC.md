@@ -92,7 +92,8 @@ Terminal, go back to it first with `cd ~/lunacid-vr`.
 The port was made for one version of Lunacid (Steam build 24780950). SteamCMD downloads exactly that version with
 your Steam account, even after the game updates.
 
-Run this, with **your Steam user name** in place of `<your Steam user>` (without the `< >`):
+Run this, with **your Steam user name** in place of `<your Steam user>` (without the `< >`). **The command starts
+with `~/steamcmd/steamcmd.sh`, the full path, not just `steamcmd`**: plain `steamcmd` says `command not found`.
 
 ```
 ~/steamcmd/steamcmd.sh +@sSteamCmdForcePlatformType windows +login <your Steam user> +download_depot 1745510 1745511 9110162109347716163 +quit

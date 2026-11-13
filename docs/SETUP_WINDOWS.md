@@ -90,7 +90,9 @@ When you open a new terminal, go back to it first with `cd $HOME\Documents\lunac
 The port was made for one version of Lunacid (Steam build 24780950). SteamCMD downloads exactly that version with
 your Steam account, even after the game updates. Your normal Steam install is not touched.
 
-Run this, with **your Steam user name** in place of `<your Steam user>` (without the `< >`):
+Run this, with **your Steam user name** in place of `<your Steam user>` (without the `< >`). **The command starts
+with `C:\steamcmd\steamcmd.exe`, the full path, not just `steamcmd`**: Windows does not know where SteamCMD is,
+so plain `steamcmd` says `is not recognized`.
 
 ```
 C:\steamcmd\steamcmd.exe +@sSteamCmdForcePlatformType windows +login <your Steam user> +download_depot 1745510 1745511 9110162109347716163 +quit
