@@ -1,0 +1,11 @@
+{
+  "work": "~/lunacid-work",
+  "project": "~/lunacid-work/project/ExportedProject",
+  "game_data": "path to the game's LUNACID_Data folder",
+  "unity": "leave out to use Unity Hub's default install of 6000.0.85f1",
+  "android_sdk": "leave out to use the SDK of Unity's Android module",
+  "android_ndk": "leave out to use Unity's NDK",
+  "jdk": "leave out to use Unity's OpenJDK",
+  "assetripper": "path to AssetRipper 2.0.0's AssetRipper.GUI.Free executable",
+  "dotnet": "leave out to use dotnet on the PATH or in <work>/tools/dotnet"
+}

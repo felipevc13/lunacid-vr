@@ -1,0 +1,24 @@
+USCSandbox: keep the swizzle of a constant-buffer read that takes all components.
+
+A float4 read with four components was always printed without a swizzle, as if it were .xyzw.
+The fog distance in a vertex shader, mad(r1.xxxx, cb3[1].zzzz, cb3[1].wwww) in the DXBC, came out as
+'tmp1.xxxx * unity_FogParams + unity_FogParams' (seen in the game's PIDI World Based Fog shader).
+The mask is now hidden only when it is .xyzw in order.
+
+Licence: GPL-3.0, like USCSandbox (https://github.com/nesrak1/USCSandbox).
+
+diff --git a/USCSandbox/UltraShaderConverter/USIL/Metadders/USILCBufferMetadder.cs b/USCSandbox/UltraShaderConverter/USIL/Metadders/USILCBufferMetadder.cs
+index 4123eb1..c33553e 100644
+--- a/USCSandbox/UltraShaderConverter/USIL/Metadders/USILCBufferMetadder.cs
++++ b/USCSandbox/UltraShaderConverter/USIL/Metadders/USILCBufferMetadder.cs
+@@ -170,7 +170,9 @@ namespace AssetRipper.Export.Modules.Shaders.UltraShaderConverter.USIL.Metadders
+                     operand.metadataNameAssigned = true;
+                     operand.metadataNameWithArray = param.ArraySize > 1;
+ 
+-                    if (cbMasks.Count == maxRowOrColumnLength && !param.IsMatrix)
++                    // hide the mask only when it is the whole variable in order (.xyzw), not .zzzz or .wwww
++                    if (cbMasks.Count == maxRowOrColumnLength && !param.IsMatrix
++                        && cbMasks.Select((m, i) => m == i).All(x => x))
+                     {
+                         operand.displayMask = false;
+                     }

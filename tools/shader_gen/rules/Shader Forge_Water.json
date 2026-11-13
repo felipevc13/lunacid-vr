@@ -1,0 +1,8 @@
+{
+  "why": [
+    "Queue Transparent-10 (the original is Transparent): the moon reflection (MOON2) is a mirrored quad placed far below the sea surface, so it must still draw over the water."
+  ],
+  "subshader_tags": {
+    "Queue": "Transparent-10"
+  }
+}

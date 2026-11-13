@@ -1,0 +1,8 @@
+{
+  "why": [
+    "The billboard is built from the object origin: batching folds the flames of a candle cluster into one mesh at the world origin, so they vanished on the Quest (HAUNT Candel_Cluster)."
+  ],
+  "subshader_tags": {
+    "DisableBatching": "True"
+  }
+}

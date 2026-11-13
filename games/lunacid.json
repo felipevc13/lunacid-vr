@@ -1,0 +1,89 @@
+{
+  "name": "Lunacid",
+  "appid": 1745510,
+  "steam_name": "LUNACID",
+  "steam_depot": 1745511,
+  "game_versions": [
+    {
+      "steam_build": 24780950,
+      "manifest": "9110162109347716163",
+      "sha256": {
+        "Managed/Assembly-CSharp.dll": "4395dcc54e9a9825976230de2a07d4e8cb022bc9b9ac55be1ccef0e00e05a6a5",
+        "globalgamemanagers": "68136e3969e84fea15760557db2d2c0ad9ce93e36eccc6d8a2d0acf7c17f9804"
+      }
+    }
+  ],
+  "unity_version": "2020.3.4f1",
+  "target_unity_version": "6000.0.85f1",
+  "target_platform": "Android",
+  "lightmap_scenes": ["HUB_01", "DETHLAND"],
+  "target_architecture": "ARM64",
+  "target_graphics_api": "Vulkan",
+  "build_scenes_count": 30,
+  "scenes": [
+    "Assets/Scenes/MainMenu.unity",
+    "Assets/Scenes/CHAR_CREATE.unity",
+    "Assets/Scenes/PITT_A1.unity",
+    "Assets/Scenes/HUB_01.unity",
+    "Assets/Scenes/Gameover.unity",
+    "Assets/Scenes/FOREST_A1.unity",
+    "Assets/Scenes/SEWER_A1.unity",
+    "Assets/Scenes/LAKE.unity",
+    "Assets/Scenes/HAUNT.unity",
+    "Assets/Scenes/ARCHIVES.unity",
+    "Assets/Scenes/CAS_1.unity",
+    "Assets/Scenes/PITT_B1.unity",
+    "Assets/Scenes/FOREST_B1.unity",
+    "Assets/Scenes/CAS_2.unity",
+    "Assets/Scenes/CAVE.unity",
+    "Assets/Scenes/WALL_01.unity",
+    "Assets/Scenes/CAS_3.unity",
+    "Assets/Scenes/TOWER.unity",
+    "Assets/Scenes/END_E.unity",
+    "Assets/Scenes/PRISON.unity",
+    "Assets/Scenes/ARENA.unity",
+    "Assets/Scenes/ARENA2.unity",
+    "Assets/Scenes/WhatWillBeAtTheEnd.unity",
+    "Assets/Scenes/END_TOWN.unity",
+    "Assets/Scenes/END_B.unity",
+    "Assets/Scenes/VOID.unity",
+    "Assets/Scenes/END_EVID.unity",
+    "Assets/Scenes/END_A.unity",
+    "Assets/Scenes/CAS_PITT.unity",
+    "Assets/Scenes/DETHLAND.unity"
+  ],
+  "material_overrides": [
+    {
+      "file": "Stain_mat.mat",
+      "reason": "Cutout stain puddle quad rendered as opaque black polygon due to _Clip: 0 on texture with 68.4% transparent alpha. Requires _Clip: 1 and _CLIP_ON keyword."
+    }
+  ],
+  "shader_overrides": [
+    {
+      "shader": "Shader Forge/Object",
+      "file": "shaders/Shader Forge_Object.shader",
+      "reason": "Original shader had only ForwardBase pass, causing 21 point/spot lights in MainMenu to be completely ignored (walls rendered pitch black). Added ForwardAdd pass with Blend One One and UNITY_LIGHT_ATTENUATION."
+    },
+    {
+      "shader": "Shader Forge/Gamma",
+      "file": "shaders/Shader Forge_Gamma.shader",
+      "reason": "Fullscreen camera post-process blit shader for Effect_scr.cs (fade-in/out and gamma). Generic stub transformed quad into 3D clip-space with ZWrite On, causing solid purple occlusion of the menu."
+    },
+    {
+      "shader": "CASMOON",
+      "reason": "Decompiled moon stub rendered as black sphere or unlit magenta. Replaced with unlit additive/transparent SubShader with emission."
+    }
+  ],
+  "ui_and_camera": {
+    "menu_canvas": "PRESS_START",
+    "flash_fade_effect": "FLASH_FADE (Flash_scr.cs - white screen UI canvas transition)"
+  },
+  "quirks": [
+    "Android file I/O: Application.dataPath points to read-only package directory; requires redirection to persistentDataPath for saves and settings.",
+    "Legacy precompiled DLLs: Unity.TextMeshPro, Unity.InputSystem, UnityEngine.UI in Assets/Plugins must be removed and GUIDs remapped.",
+    "Built-in shader stripping: Unity 6 strips unreferenced built-in shaders on Android; requires preloading 72+ shaders in m_AlwaysIncludedShaders.",
+    "Post-processing blit failure: PostProcessLayer and RetroLookPro blit pass 4 crashes Vulkan/Quest; disabled dynamically via IProcessSceneWithReport."
+  ],
+  "shader_variant_budget": 90000
+}
+

@@ -1,0 +1,6 @@
+{
+  "why": [
+    "A 48-step raymarch is too heavy for the Quest for clouds barely visible in the intro: the port's own shader draws nothing."
+  ],
+  "use_repo_shader": "shaders/VolumetricCloud3.shader"
+}

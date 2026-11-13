@@ -1,0 +1,23 @@
+USCSandbox: write the DXBC log instruction as log2(), not log().
+
+DXBC 'log' is the base-2 logarithm; HLSL 'log()' is the natural one. The linear-to-gamma step of
+the light-probe ambient (log, * 0.4166667, exp2) became x^0.289 instead of x^(1/2.4), so dynamic
+objects came out brighter than on PC (FOREST_A1 dryad, HUB_01 witch). Found by rendering the same
+material with the PC game's ambient in Unity 6 (tools/lightmap_dump/LunaProbeDump.cs for the PC side).
+
+Licence: GPL-3.0, like USCSandbox (https://github.com/nesrak1/USCSandbox).
+
+diff --git a/USCSandbox/UltraShaderConverter/UShader/Function/UShaderFunctionToHLSL.cs b/USCSandbox/UltraShaderConverter/UShader/Function/UShaderFunctionToHLSL.cs
+index 324403c..b58a5b7 100644
+--- a/USCSandbox/UltraShaderConverter/UShader/Function/UShaderFunctionToHLSL.cs
++++ b/USCSandbox/UltraShaderConverter/UShader/Function/UShaderFunctionToHLSL.cs
+@@ -341,7 +341,8 @@ namespace AssetRipper.Export.Modules.Shaders.UltraShaderConverter.UShader.Functi
+         private void HandleLogarithm2(USILInstruction inst)
+         {
+             List<USILOperand> srcOps = inst.srcOperands;
+-            string value = $"log({srcOps[0]})";
++            // DXBC log is base 2; HLSL log() is the natural logarithm
++            string value = $"log2({srcOps[0]})";
+             string comment = CommentString(inst);
+             AppendLine($"{comment}{inst.destOperand} = {value};");
+         }

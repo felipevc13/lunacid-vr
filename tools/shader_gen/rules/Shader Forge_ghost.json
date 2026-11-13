@@ -1,0 +1,13 @@
+{
+  "why": [
+    "Vulkan sends vertex colour 0 for a mesh without colours (D3D11 sent white): the SANGUIS UMBRA camel and rider vanished.",
+    "Vertex colour is white unless _LunaVertexColor is 1, which passes/pass_material_floats.py sets on Ghosty (its mesh carries colours that fade the body)."
+  ],
+  "properties": [
+    "_LunaVertexColor (\"Use vertex colour (port)\", Float) = 0"
+  ],
+  "declare": [
+    "float _LunaVertexColor;"
+  ],
+  "vertex_color": "property:_LunaVertexColor"
+}

@@ -1,0 +1,6 @@
+{
+  "why": [
+    "A stereo GrabPass costs the Quest a full-screen resolve every frame for a faint shimmer: the port's own shader draws nothing."
+  ],
+  "use_repo_shader": "shaders/Shader Forge_Heatwave.shader"
+}

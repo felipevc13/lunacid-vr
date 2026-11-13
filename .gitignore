@@ -1,0 +1,45 @@
+# Game & Unity Assets
+[Aa]ssets/
+[Pp]roject[Ss]ettings/
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emory[Cc]aptures/
+BackupPlugins/
+
+# Unity packages and extracted GUID directories
+fe393ace*
+*.unitypackage
+*.apk
+*.aab
+*.zip
+*.tar
+*.tar.gz
+*.dmg
+*.sparsebundle
+*.sparseimage
+
+# OS & IDE
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+*.userprefs
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Machine configuration (core/config.py)
+local.json
+
+# Signing keys live in <work>/keystore (tools/build/keystore.py), never here
+*.keystore
+*.jks
+keystore.json

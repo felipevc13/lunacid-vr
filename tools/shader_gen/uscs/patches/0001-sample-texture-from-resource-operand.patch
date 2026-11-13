@@ -1,0 +1,32 @@
+USCSandbox: name the sampled texture after the resource operand, not the sampler.
+
+When two textures share one sampler (the directional lightmap: unity_LightmapInd and
+unity_Lightmap both use s0), both reads came out as unity_Lightmap. Seen in the game's
+Shader Forge/Object, Hair and Lunacid/Mix; checked against the DXBC (t4 then t3).
+
+Licence: GPL-3.0, like USCSandbox (https://github.com/nesrak1/USCSandbox).
+
+diff --git a/USCSandbox/UltraShaderConverter/UShader/Function/UShaderFunctionToHLSL.cs b/USCSandbox/UltraShaderConverter/UShader/Function/UShaderFunctionToHLSL.cs
+index 71ab873..324403c 100644
+--- a/USCSandbox/UltraShaderConverter/UShader/Function/UShaderFunctionToHLSL.cs
++++ b/USCSandbox/UltraShaderConverter/UShader/Function/UShaderFunctionToHLSL.cs
+@@ -534,7 +534,8 @@ namespace AssetRipper.Export.Modules.Shaders.UltraShaderConverter.UShader.Functi
+             }
+             else
+             {
+-                args = $"{srcOps[2]}, {args}";
++                // texture from the resource operand, sampler from the sampler operand: two textures may share one sampler
++                args = $"{srcOps[1]}, {args}";
+                 value = textureOperand.operandType switch
+                 {
+                     USILOperandType.Sampler2D => $"UNITY_SAMPLE_TEX2D_SAMPLER({args})",
+@@ -579,7 +580,8 @@ namespace AssetRipper.Export.Modules.Shaders.UltraShaderConverter.UShader.Functi
+             }
+             else
+             {
+-                args = $"{srcOps[2]}, {args}";
++                // texture from the resource operand, sampler from the sampler operand: two textures may share one sampler
++                args = $"{srcOps[1]}, {args}";
+                 value = textureOperand.operandType switch
+                 {
+                     USILOperandType.Sampler2D => $"UNITY_SAMPLE_TEX2D_SAMPLER({args})",

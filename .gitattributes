@@ -1,0 +1,2 @@
+# Patches are applied with git apply to files with LF endings: keep them byte for byte on every OS
+tools/shader_gen/uscs/patches/*.patch -text

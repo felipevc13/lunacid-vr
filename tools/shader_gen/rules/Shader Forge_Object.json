@@ -1,0 +1,51 @@
+{
+  "why": [
+    "Puddle mode, set by passes/pass_material_stains.py on Stain_mat: draw only the emission (the RT_256 reflection) masked by the texture alpha, blended additively.",
+    "The blend and depth write come from port properties whose defaults are the original's state (SrcAlpha OneMinusSrcAlpha, ZWrite On)."
+  ],
+  "properties": [
+    "_EmissionOnly (\"Emission Only (port)\", Float) = 0",
+    "_LunaSrcBlend (\"Port Src Blend\", Float) = 5",
+    "_LunaDstBlend (\"Port Dst Blend\", Float) = 10",
+    "_LunaZWrite (\"Port ZWrite\", Float) = 1"
+  ],
+  "declare": [
+    "float _EmissionOnly;"
+  ],
+  "pass_state": {
+    "FORWARDBASE": {
+      "Blend": "[_LunaSrcBlend] [_LunaDstBlend]",
+      "ZWrite": "[_LunaZWrite]"
+    }
+  },
+  "frag_wrapper": {
+    "FORWARDBASE": [
+      "fout frag(v2f inp)",
+      "{",
+      "    if (_EmissionOnly > 0.5)",
+      "    {",
+      "        UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(inp);",
+      "        fout o;",
+      "        float4 t = tex2D(_MainTex, inp.texcoord.xy * _MainTex_ST.xy + _MainTex_ST.zw);",
+      "        if (_Clip > 0.5) clip(t.a - 0.5);",
+      "        float4 e = tex2D(_Emission, inp.texcoord.xy * _Emission_ST.xy + _Emission_ST.zw);",
+      "        o.sv_target = float4(e.rgb * t.a, 1.0);",
+      "        return o;",
+      "    }",
+      "    return frag_game(inp);",
+      "}"
+    ],
+    "FORWARDADD": [
+      "fout frag(v2f inp)",
+      "{",
+      "    if (_EmissionOnly > 0.5)",
+      "    {",
+      "        fout o;",
+      "        o.sv_target = float4(0.0, 0.0, 0.0, 0.0);",
+      "        return o;",
+      "    }",
+      "    return frag_game(inp);",
+      "}"
+    ]
+  }
+}

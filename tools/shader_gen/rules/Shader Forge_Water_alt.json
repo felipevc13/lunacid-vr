@@ -1,0 +1,8 @@
+{
+  "why": [
+    "Queue Transparent-10, as Shader Forge/Water (the MOON2 reflection quad under the sea)."
+  ],
+  "subshader_tags": {
+    "Queue": "Transparent-10"
+  }
+}

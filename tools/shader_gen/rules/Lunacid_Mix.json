@@ -1,0 +1,16 @@
+{
+  "why": [
+    "On PC _LightColor0 is black in the lightmapped HUB_01 (point lights only); on the Quest it is not, and the N.L term blew the scene out to white (Builds 21-22).",
+    "Lightmapped surfaces keep only the baked light."
+  ],
+  "replace_when": [
+    {
+      "pass": "FORWARDBASE",
+      "keywords": [
+        "LIGHTMAP_ON"
+      ],
+      "find": "\\b_LightColor0(?=\\.)",
+      "replace": "float4(0.0, 0.0, 0.0, 0.0)"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+USCSandbox: write the last variant's keywords on its #else line.
+
+The last vertex and fragment variant of a pass is written as a bare #else, so its keyword set
+was lost. tools/shader_gen/generate.py reads every variant's keywords to rebuild the chain.
+Output: '#else // KW_A && KW_B // PASS:DX11PixelSM40' (still valid HLSL).
+
+Licence: GPL-3.0, like USCSandbox (https://github.com/nesrak1/USCSandbox).
+
+diff --git a/USCSandbox/Processor/ShaderProcessor.cs b/USCSandbox/Processor/ShaderProcessor.cs
+index 2108c20..b80f5bb 100644
+--- a/USCSandbox/Processor/ShaderProcessor.cs
++++ b/USCSandbox/Processor/ShaderProcessor.cs
+@@ -227,7 +227,8 @@ namespace USCSandbox.Processor
+                 {
+                     structSb.AppendLine();
+                     structSb.Append(new string(' ', depth * 4));
+-                    structSb.Append("#else");
++                    // keep the last variant's keywords: a generator reading this output needs them
++                    structSb.Append($"#else // {string.Join(" && ", keywords)} // {passName}:{programType}");
+                 }
+                 else if ((!noVertexVariants && programType == ShaderGpuProgramType.DX11VertexSM40)
+                         || (!noFragmentVariants && programType == ShaderGpuProgramType.DX11PixelSM40))

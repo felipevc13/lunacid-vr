@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" font-family="Georgia, 'Times New Roman', serif">
+  <title>Lunacid VR: Quest Touch controls</title>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="40%" r="75%">
+      <stop offset="0" stop-color="#2a2140"/>
+      <stop offset="1" stop-color="#0d0b16"/>
+    </radialGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b3550"/>
+      <stop offset="1" stop-color="#1f1b2c"/>
+    </linearGradient>
+    <style>
+      .title { fill: #e9ddff; font-size: 54px; letter-spacing: 6px; }
+      .sub { fill: #a99cc8; font-size: 22px; letter-spacing: 2px; }
+      .side { fill: #c9b8ff; font-size: 28px; letter-spacing: 4px; }
+      .lab { fill: #f4eeff; font-size: 27px; }
+      .key { fill: #8fe3b0; font-size: 19px; letter-spacing: 1px; }
+      .line { stroke: #8a7bb5; stroke-width: 2; fill: none; }
+      .dot { fill: #8fe3b0; }
+      .ring { fill: none; stroke: #6e6394; stroke-width: 14; }
+      .face { fill: url(#body); stroke: #6e6394; stroke-width: 3; }
+      .stick { fill: #151220; stroke: #b9a8ee; stroke-width: 3; }
+      .btn { fill: #151220; stroke: #b9a8ee; stroke-width: 3; }
+      .btxt { fill: #e9ddff; font-size: 22px; font-family: Arial, Helvetica, sans-serif; font-weight: bold; }
+      .under { fill: #6e6394; font-size: 17px; letter-spacing: 1px; font-family: Arial, Helvetica, sans-serif; }
+      .note { fill: #a99cc8; font-size: 21px; }
+    </style>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <text x="800" y="78" text-anchor="middle" class="title">CONTROLS</text>
+  <text x="800" y="114" text-anchor="middle" class="sub">LUNACID VR · META QUEST TOUCH · LOOK AROUND WITH YOUR HEAD</text>
+
+  <!-- LEFT CONTROLLER, centred on x=620; every label on its left -->
+  <text x="620" y="182" text-anchor="middle" class="side">LEFT</text>
+  <circle cx="620" cy="330" r="112" class="ring"/>
+  <path class="face" d="M525 370 Q525 272 620 262 Q715 272 715 370 L701 660 Q692 718 620 723 Q548 718 539 660 Z"/>
+  <circle cx="592" cy="390" r="38" class="stick"/><circle cx="592" cy="390" r="17" fill="#2b2540"/>
+  <circle cx="662" cy="388" r="20" class="btn"/><text x="662" y="396" text-anchor="middle" class="btxt">Y</text>
+  <circle cx="668" cy="452" r="20" class="btn"/><text x="668" y="460" text-anchor="middle" class="btxt">X</text>
+  <rect x="580" y="500" width="26" height="14" rx="7" class="btn"/>
+  <text x="620" y="600" text-anchor="middle" class="under">TRIGGER &amp; GRIP</text>
+  <text x="620" y="622" text-anchor="middle" class="under">UNDERNEATH</text>
+
+  <path class="line" d="M556 380 L460 236"/><circle cx="556" cy="380" r="5" class="dot"/>
+  <text x="445" y="222" text-anchor="end" class="key">STICK</text><text x="445" y="252" text-anchor="end" class="lab">Move where you look</text>
+  <path class="line" d="M570 420 L460 318"/><circle cx="570" cy="420" r="5" class="dot"/>
+  <text x="445" y="304" text-anchor="end" class="key">STICK CLICK</text><text x="445" y="334" text-anchor="end" class="lab">Next item</text>
+  <path class="line" d="M642 388 L630 400 L460 400"/><circle cx="642" cy="388" r="5" class="dot"/>
+  <text x="445" y="386" text-anchor="end" class="key">Y</text><text x="445" y="416" text-anchor="end" class="lab">Swap weapon</text>
+  <path class="line" d="M648 456 L640 482 L460 482"/><circle cx="648" cy="456" r="5" class="dot"/>
+  <text x="445" y="468" text-anchor="end" class="key">X</text><text x="445" y="498" text-anchor="end" class="lab">Use, talk, open</text>
+  <path class="line" d="M580 507 L540 564 L460 564"/><circle cx="580" cy="507" r="5" class="dot"/>
+  <text x="445" y="550" text-anchor="end" class="key">MENU</text><text x="445" y="580" text-anchor="end" class="lab">Inventory, pause</text>
+  <path class="line" d="M560 610 L460 646"/><circle cx="560" cy="610" r="5" class="dot"/>
+  <text x="445" y="632" text-anchor="end" class="key">TRIGGER (index finger)</text><text x="445" y="662" text-anchor="end" class="lab">Block</text>
+  <path class="line" d="M560 618 L460 728"/>
+  <text x="445" y="714" text-anchor="end" class="key">GRIP (middle finger)</text><text x="445" y="744" text-anchor="end" class="lab">Spell 1</text>
+
+  <!-- RIGHT CONTROLLER, centred on x=980; every label on its right -->
+  <text x="980" y="182" text-anchor="middle" class="side">RIGHT</text>
+  <circle cx="980" cy="330" r="112" class="ring"/>
+  <path class="face" d="M885 370 Q885 272 980 262 Q1075 272 1075 370 L1061 660 Q1052 718 980 723 Q908 718 899 660 Z"/>
+  <circle cx="1008" cy="390" r="38" class="stick"/><circle cx="1008" cy="390" r="17" fill="#2b2540"/>
+  <circle cx="938" cy="388" r="20" class="btn"/><text x="938" y="396" text-anchor="middle" class="btxt">B</text>
+  <circle cx="932" cy="452" r="20" class="btn"/><text x="932" y="460" text-anchor="middle" class="btxt">A</text>
+  <text x="980" y="600" text-anchor="middle" class="under">TRIGGER &amp; GRIP</text>
+  <text x="980" y="622" text-anchor="middle" class="under">UNDERNEATH</text>
+
+  <path class="line" d="M1044 380 L1140 236"/><circle cx="1044" cy="380" r="5" class="dot"/>
+  <text x="1155" y="222" class="key">STICK</text><text x="1155" y="252" class="lab">Turn</text>
+  <path class="line" d="M1030 420 L1140 318"/><circle cx="1030" cy="420" r="5" class="dot"/>
+  <text x="1155" y="304" class="key">STICK CLICK</text><text x="1155" y="334" class="lab">Use item</text>
+  <path class="line" d="M958 388 L970 400 L1140 400"/><circle cx="958" cy="388" r="5" class="dot"/>
+  <text x="1155" y="386" class="key">B</text><text x="1155" y="416" class="lab">Sprint, back</text>
+  <path class="line" d="M952 456 L960 482 L1140 482"/><circle cx="952" cy="456" r="5" class="dot"/>
+  <text x="1155" y="468" class="key">A</text><text x="1155" y="498" class="lab">Jump, confirm</text>
+  <path class="line" d="M1040 610 L1140 646"/><circle cx="1040" cy="610" r="5" class="dot"/>
+  <text x="1155" y="632" class="key">TRIGGER (index finger)</text><text x="1155" y="662" class="lab">Attack, menu click</text>
+  <path class="line" d="M1040 618 L1140 728"/>
+  <text x="1155" y="714" class="key">GRIP (middle finger)</text><text x="1155" y="744" text-anchor="start" class="lab">Spell 2</text>
+
+  <text x="800" y="820" text-anchor="middle" class="note">Menus: point with the right controller and pull its trigger.</text>
+  <text x="800" y="852" text-anchor="middle" class="note">Settings: TURN (snap or smooth), SNAP ANGLE, TURN SPEED. L/R HAND swaps attack and block.</text>
+</svg>
