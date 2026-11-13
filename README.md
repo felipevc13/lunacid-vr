@@ -62,7 +62,9 @@ C:\steamcmd\steamcmd.exe +@sSteamCmdForcePlatformType windows +login <your Steam
 ```
 
 SteamCMD is a download you unpack, not an installed command: use its full path (`C:\steamcmd\steamcmd.exe` on
-Windows, `~/steamcmd/steamcmd.sh` on a Mac). The step-by-step guides show where to get it.
+Windows, `~/steamcmd/steamcmd.sh` on a Mac). The step-by-step guides show where to get it. On Windows, run SteamCMD in a terminal
+opened as administrator, and let it update itself first (`C:\steamcmd\steamcmd.exe +quit`): on the Windows computer it was
+tested on, its first update failed in a normal terminal with `Failed to load steam.dll`.
 
 Type your own Steam user name. SteamCMD itself asks for your password and Steam Guard code. **These tools
 never read, receive or store your Steam credentials.** The files land in SteamCMD's

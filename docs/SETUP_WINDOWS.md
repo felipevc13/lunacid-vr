@@ -20,6 +20,11 @@ Some steps are commands you type in a **terminal**: a window where you type a li
 - **The rule:** after you install any program, **close every terminal window and open a new one** (in VS Code:
   close VS Code itself and open it again). A terminal only sees programs that existed when it opened. If a command
   says `is not recognized` (`não é reconhecido`), this is almost always why.
+- **VS Code works too:** its terminal (**Terminal → New Terminal**) is the same thing. The rule above applies to
+  VS Code as a whole: quit it (**File → Exit**) after each install.
+- **Administrator terminal:** one tool, SteamCMD, needs it. Press the Windows key, type `Terminal`, **right click**
+  it, **Run as administrator**, and say **Yes** to Windows' question. The window's title starts with
+  `Administrador` / `Administrator`. Use it only where this guide says so.
 
 ## 1. Install the programs
 
@@ -71,16 +76,21 @@ SteamCMD is Valve's own download tool. It is not installed like the others: it i
 1. Download <https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip>.
 2. Make a folder `C:\steamcmd` and extract the zip into it (right click, **Extract All…**).
 3. **Check:** `Test-Path C:\steamcmd\steamcmd.exe` prints `True`.
-4. **Let SteamCMD update itself, alone, before using it.** The first run downloads its own update (about 43 MB)
-   and applies it. Run:
+4. **Open an administrator terminal** (step 0 says how). On the Windows 11 computer this guide was tested on,
+   SteamCMD's first update failed in a normal terminal (`Failed to apply update`, then
+   `Fatal Error: Failed to load steam.dll`) and worked in an administrator one.
+5. **In the administrator terminal, let SteamCMD update itself, alone, before using it.** The first run downloads
+   its own update (30 to 45 MB) and applies it:
 
    ```
    C:\steamcmd\steamcmd.exe +quit
    ```
 
-   Wait until the terminal shows the prompt (`PS C:\...>`) again. **Check:** the last lines have no
-   `Fatal Error`. If they say `Failed to apply update` or `Fatal Error: Failed to load steam.dll`, run the same
-   command again; it often works the second time. If it keeps failing, see "When something goes wrong" below.
+   Wait until the prompt (`PS C:\...>`) comes back. **Check:** near the end it says `Update complete` and
+   `Loading Steam API...OK`, with no `Fatal Error`. A last line about `CWorkThreadPool … items discarded` is
+   normal. If you see `Fatal Error`, see "When something goes wrong" below.
+6. **Keep this administrator terminal open** for step 3 (the game download). Use normal terminals for everything
+   else.
 
 ## 2. Download this project
 
@@ -93,14 +103,16 @@ cd lunacid-vr
 ```
 
 **Check:** the last line of the terminal ends with `lunacid-vr>`. From now on, run every command in this folder.
-When you open a new terminal, go back to it first with `cd $HOME\Documents\lunacid-vr`.
+When you open a new terminal, go back to it first with `cd $HOME\Documents\lunacid-vr` (if you cloned it
+somewhere else, `cd` to that folder instead; in VS Code, **File → Open Folder…** and choose `lunacid-vr`, and its
+terminal opens there).
 
 ## 3. Download the game files
 
 The port was made for one version of Lunacid (Steam build 24780950). SteamCMD downloads exactly that version with
 your Steam account, even after the game updates. Your normal Steam install is not touched.
 
-Run this, with **your Steam user name** in place of `<your Steam user>` (without the `< >`). **The command starts
+Run this **in the administrator terminal** (step 1, SteamCMD) from any folder, with **your Steam user name** in place of `<your Steam user>` (without the `< >`). **The command starts
 with `C:\steamcmd\steamcmd.exe`, the full path, not just `steamcmd`**: Windows does not know where SteamCMD is,
 so plain `steamcmd` says `is not recognized`.
 
@@ -112,14 +124,17 @@ C:\steamcmd\steamcmd.exe +@sSteamCmdForcePlatformType windows +login <your Steam
 - It asks for your **password**. Type it and press Enter. **Nothing appears while you type: that is normal.**
 - It asks for your **Steam Guard code** (from the Steam app on your phone, or your email). Type it, press Enter.
 - **These tools never see your password.** You type it into SteamCMD, Valve's program.
-- It downloads about 1.5 GB.
+- It downloads about 740 MB (359 files); the game takes about 1.5 GB on disk.
 
 **Check:** the last lines say `Depot download complete` and show a folder, normally
-`C:\steamcmd\steamapps\content\app_1745510\depot_1745511`.
+`C:\steamcmd\steamapps\content\app_1745510\depot_1745511`, with `(manifest 9110162109347716163)`.
+
+**Now close the administrator terminal.** Go back to a normal terminal in the `lunacid-vr` folder.
 
 ## 4. Tell the tools where everything is
 
-1. Run `notepad local.json`. Notepad asks whether to create the file: click **Yes**.
+1. In the `lunacid-vr` folder, run `notepad local.json`. Notepad asks whether to create the file: click **Yes**.
+   This is a new file. Do not edit `local.example.json`: it is only an example, and its text is not a real path.
 2. Paste this whole text, unchanged if you used the folders of this guide:
 
    ```
@@ -202,15 +217,15 @@ without a terminal: in the headset, **Library**, find Lunacid VR, the **three do
 - **`is not recognized` / `não é reconhecido`:** close the terminal (or VS Code) and open it again. If it still
   fails, the program in that step did not finish installing: run its installer again.
 - **SteamCMD says `Failed to apply update` or `Fatal Error: Failed to load steam.dll`:** its own update did not
-  finish. Run `C:\steamcmd\steamcmd.exe +quit` again. If it keeps failing, empty the folder except the program
-  and try once more:
+  finish. Make sure you are in an **administrator terminal** (its title starts with `Administrador` /
+  `Administrator`). Empty SteamCMD's folder except the program, then let it update again:
 
   ```
   Get-ChildItem C:\steamcmd -Exclude steamcmd.exe | Remove-Item -Recurse -Force
   C:\steamcmd\steamcmd.exe +quit
   ```
 
-  If it still fails, Windows Security may be blocking it (look for a "blocked" notice): open **Terminal** from the
-  Start menu with right click, **Run as administrator**, and run those two commands there.
+  If it still fails, look for a Windows Security notice ("blocked") and send it, with the last lines of
+  `Get-Content C:\steamcmd\logs\bootstrap_log.txt -Tail 25`.
 - **Anything else:** copy the whole message from the terminal (select it, right click) and send it with your
   question. The `doctor` output helps too.

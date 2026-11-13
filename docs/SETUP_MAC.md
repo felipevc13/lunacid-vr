@@ -112,7 +112,7 @@ with `~/steamcmd/steamcmd.sh`, the full path, not just `steamcmd`**: plain `stea
 - It asks for your **password**. Type it and press Return. **Nothing appears while you type: that is normal.**
 - It asks for your **Steam Guard code** (from the Steam app on your phone, or your email). Type it, press Return.
 - **These tools never see your password.** You type it into SteamCMD, Valve's program.
-- It downloads about 1.5 GB.
+- It downloads about 740 MB (359 files); the game takes about 1.5 GB on disk.
 
 **Check:** the last lines say `Depot download complete` and show a folder. **Copy that folder's path**: you need
 it in the next step.
