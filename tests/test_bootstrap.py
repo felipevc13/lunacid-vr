@@ -75,6 +75,14 @@ class TestMac(unittest.TestCase):
         self.assertIn("Instalando", self.sh)
 
 
+class TestUpdatingIsTheSameLine(unittest.TestCase):
+    def test_the_docs_say_so(self):
+        for doc in ("README.md", "docs/SETUP_WINDOWS.md", "docs/SETUP_MAC.md"):
+            text = read(doc)
+            self.assertIn("## Updating", text, doc)
+            self.assertIn("same line again", text, doc)
+
+
 class TestTheOneLines(unittest.TestCase):
     """The README and both guides show the same two lines the scripts say they are run with."""
 

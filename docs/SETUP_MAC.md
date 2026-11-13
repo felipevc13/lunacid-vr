@@ -51,6 +51,13 @@ In this order. Each one is shown in the window when it is needed:
 When it says **Done**, the game is in the headset: **Library**, the filter at the top, **Unknown sources**,
 **Lunacid VR**.
 
+## Updating
+
+When a new version is out (a fix, a new feature), **paste the same line again**. It gets the new version, builds the
+game again only when the change needs it (choosing the quick build, about 25 to 45 minutes, or the full one), and
+installs it over the one on your Quest. **Your saves stay.** You decide nothing: just answer what it asks, as the
+first time.
+
 ## If something goes wrong
 
 - **Run the same line again.** Finished steps are skipped, and it carries on from where it stopped.

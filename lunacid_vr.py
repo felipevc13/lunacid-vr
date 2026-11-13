@@ -229,6 +229,73 @@ OBB_NAME = "Lunacid_Quest.main.obb"
 BUILD_FOLDER = re.compile(r"^\d{8}_\d{4}$")
 
 
+# What a change needs. Port code compiles in a fast build; anything that changes scenes, materials or shaders needs
+# the full one; files that never reach the game need nothing. A file not listed is treated as needing a full build.
+NO_BUILD = ("docs/", "tests/", "tools/setup/", "tools/release/", "tools/extract/", "tools/editor_checks/",
+            "tools/telemetry/", "tools/pc_reference/", "tools/lightmap_dump/", "tools/shader_disasm/",
+            "tools/build/build_report.py", "lunacid_vr.py", "setup.ps1", "setup.sh", "LICENSE", "local.example.json",
+            ".gitignore", ".gitattributes")
+FAST_BUILD = ("tools/vr/", "runtime/", "tools/tour/", "editor/", "tools/build/build.py", "tools/build/keystore.py",
+              "passes/pass_vr_runtime.py", "passes/pass_tour_runtime.py", "passes/pass_editor_scripts.py")
+
+
+def rebuild_kind(files):
+    """None, "fast" or "full": the build the changed files need."""
+    need = None
+    for f in files:
+        if f.endswith(".md") or f.endswith("LICENSE") or f.startswith(NO_BUILD):
+            continue
+        if f.startswith(FAST_BUILD):
+            need = need or "fast"
+            continue
+        return "full"
+    return need
+
+
+def build_needed(last, head, diff):
+    """None when the last build is of the code there is now; else the build to make. last: the last build's commit
+    (None: no build yet; "unknown": built before builds recorded it). head: the code now (None: not a git copy)."""
+    if head is None:
+        return None
+    if last is None or last == "unknown":
+        return "full"
+    if last == head:
+        return None
+    files = diff(last, head)
+    if files is None:
+        return "full"
+    return rebuild_kind(files)
+
+
+def git_head():
+    try:
+        res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True)
+        return res.stdout.strip() if res.returncode == 0 else None
+    except OSError:
+        return None
+
+
+def git_diff(a, b):
+    try:
+        res = subprocess.run(["git", "diff", "--name-only", a, b], cwd=REPO, capture_output=True, text=True)
+    except OSError:
+        return None
+    return [line for line in res.stdout.splitlines() if line] if res.returncode == 0 else None
+
+
+def last_build_commit(cfg):
+    """The commit the newest build came from; "unknown" for a build without build.json; None with no build."""
+    try:
+        apk, _ = newest_build(cfg)
+    except Problem:
+        return None
+    info = os.path.join(os.path.dirname(apk), "build.json")
+    if not os.path.exists(info):
+        return "unknown"
+    with open(info, encoding="utf-8") as fh:
+        return json.load(fh).get("commit") or "unknown"
+
+
 def newest_build(cfg):
     """(APK, OBB) to install: the APK of the newest finished build in <work>/builds, and the OBB of the newest
     build at or before it that made one (a fast build reuses the last full build's OBB)."""
@@ -525,7 +592,9 @@ TEXT = {
         "step1_done": "Step 1 of 3: this computer is ready.",
         "step2": "Step 2 of 3: building the game for the Quest. The first time takes 1 to 2 hours. Keep the computer "
                  "plugged in and awake.",
-        "step2_done": "Step 2 of 3: the game is already built.",
+        "step2_done": "Step 2 of 3: the game is up to date.",
+        "step2_fast": "Step 2 of 3: updating the game to the new version. About 25 to 45 minutes. Keep the computer "
+                      "plugged in and awake.",
         "step3": "Step 3 of 3: putting the game on the Quest.",
         "plug": "Connect the Quest to this computer with its USB-C cable and put it on. If it asks to Allow USB "
                 "debugging, tick Always allow and choose Allow. Then press Enter here...",
@@ -549,7 +618,9 @@ TEXT = {
         "step1_done": "Passo 1 de 3: este computador já está pronto.",
         "step2": "Passo 2 de 3: gerando o jogo para o Quest. Da primeira vez leva de 1 a 2 horas. Deixe o computador "
                  "na tomada e sem entrar em repouso.",
-        "step2_done": "Passo 2 de 3: o jogo já foi gerado.",
+        "step2_done": "Passo 2 de 3: o jogo já está atualizado.",
+        "step2_fast": "Passo 2 de 3: atualizando o jogo para a versão nova. De 25 a 45 minutos. Deixe o computador "
+                      "na tomada e sem entrar em repouso.",
         "step3": "Passo 3 de 3: colocando o jogo no Quest.",
         "plug": "Ligue o Quest neste computador com o cabo USB-C e coloque-o no rosto. Se ele pedir para Permitir a "
                 "depuração USB, marque Sempre permitir e escolha Permitir. Depois aperte Enter aqui...",
@@ -614,11 +685,12 @@ def _start(steps, t, tries):
             say(t["failed"])
             return 1
     say("")
-    if steps.has_build():
+    kind = steps.build_needed()
+    if kind is None:
         say(t["step2_done"])
     else:
-        say(t["step2"])
-        if steps.build():
+        say(t["step2_fast"] if kind == "fast" else t["step2"])
+        if steps.build(kind):
             say(t["failed"])
             return 1
     say("")
@@ -675,15 +747,11 @@ class RealSteps:
     def is_ready(self):
         return exit_code(doctor(self.cfg(), self.profile)) == 0
 
-    def has_build(self):
-        try:
-            newest_build(self.cfg())
-            return True
-        except Problem:
-            return False
+    def build_needed(self):
+        return build_needed(last_build_commit(self.cfg()), git_head(), git_diff)
 
-    def build(self):
-        return build(cfg=self.cfg())
+    def build(self, kind="full"):
+        return build(fast=(kind == "fast"), cfg=self.cfg())
 
     def _device(self):
         cfg = self.cfg()

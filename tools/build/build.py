@@ -55,6 +55,23 @@ def plan(cfg, profile, fast=False, log=None, keystore=None):
     return cmd, env, scenes
 
 
+def write_build_info(out, commit, fast):
+    """build.json beside the APK: the code it was built from, so `lunacid_vr.py start` knows when to build again."""
+    import json
+    os.makedirs(out, exist_ok=True)
+    with open(os.path.join(out, "build.json"), "w", encoding="utf-8") as fh:
+        json.dump({"commit": commit, "kind": "fast" if fast else "full",
+                   "date": datetime.datetime.now().isoformat(timespec="seconds")}, fh, indent=2)
+
+
+def git_commit():
+    try:
+        res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True)
+        return res.stdout.strip() if res.returncode == 0 else None
+    except OSError:
+        return None
+
+
 def keep_log(log, out):
     """Copy Unity's log into the build's own folder: the next build overwrites the one in Builds/ (LESSONS 33)."""
     if log and os.path.exists(log):
@@ -132,6 +149,7 @@ def main():
     key_sha = keystore.fingerprint(key, cfg)
     print("== signing key %s (SHA-256 %s...)" % (key["path"], key_sha[:16]))
 
+    commit = git_commit()   # the code as the build starts: a later pull does not change what this APK is
     os.makedirs(cfg["builds"], exist_ok=True)
     log = os.path.join(cfg["builds"], "build_apk.log")
     cmd, env, scenes = plan(cfg, profile, fast=args.fast, log=log, keystore=key)
@@ -155,6 +173,7 @@ def main():
     os.makedirs(out, exist_ok=True)
     keep_log(log, out)
     shutil.copy2(apk, out)
+    write_build_info(out, commit, args.fast)
     obb = os.path.join(cfg["builds"], OBB)
     if os.path.exists(obb) and not args.fast:
         shutil.copy2(obb, out)

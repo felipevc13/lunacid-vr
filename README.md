@@ -33,6 +33,13 @@ the Quest. Run the same line again at any time: finished steps are skipped.
 
 To do it by hand instead: [Windows](docs/BY_HAND_WINDOWS.md) · [Mac](docs/BY_HAND_MAC.md).
 
+## Updating
+
+When a new version is out (a fix, a new feature), **paste the same line again**. It gets the new version, builds the
+game again only when the change needs it (choosing the quick build, about 25 to 45 minutes, or the full one), and
+installs it over the one on your Quest. **Your saves stay.** You decide nothing: just answer what it asks, as the
+first time.
+
 ## For people used to these tools
 
 Inside a clone, `python3 lunacid_vr.py start` is what the line runs (on Windows, `py` for `python3`). The pieces:

@@ -36,12 +36,13 @@ class Steps:
     def is_ready(self):
         return self.ready
 
-    def has_build(self):
-        return self.built
+    def build_needed(self):
+        return self.needed if hasattr(self, "needed") else (None if self.built else "full")
 
-    def build(self):
-        self.ran.append("build")
+    def build(self, kind="full"):
+        self.ran.append("build" if kind == "full" else "build " + kind)
         self.built = True
+        self.needed = None
         return 0
 
     def quest(self):
@@ -91,6 +92,18 @@ class TestStart(unittest.TestCase):
         text = "\n".join(s.said)
         for words in ("Step 1 of 3", "Step 2 of 3", "Step 3 of 3", "1 to 2 hours"):
             self.assertIn(words, text)
+
+    def test_newer_code_is_built_again_fast_when_only_port_code_changed(self):
+        s = Steps(ready=True, built=True)
+        s.needed = "fast"
+        run_start(s)
+        self.assertEqual(s.ran, ["build fast", "install"])
+        self.assertIn("25 to 45 minutes", "\n".join(s.said))
+
+    def test_up_to_date_says_so(self):
+        s = Steps(ready=True, built=True)
+        run_start(s)
+        self.assertIn("up to date", "\n".join(s.said))
 
     def test_waits_for_the_quest_and_says_what_to_do(self):
         s = Steps(ready=True, built=True, quest_after=2)
