@@ -30,6 +30,10 @@ class FakeQuest:
         self.empty_pulls = False        # a pull that writes nothing and still says OK (seen 2026-11-09)
         self.install_wipes_saves = False
         self.short_push = False
+        self.corrupt_push = False       # same size, different bytes
+        self.installed = True
+        self.files_dir = True           # the game made its files folder (it runs once after an install)
+        self.modes = {}                 # adb push leaves 644 owned by shell; the game (another uid) cannot write
 
     def __call__(self, args):
         self.raw_calls = getattr(self, "raw_calls", []) + [list(args)]
@@ -52,6 +56,8 @@ class FakeQuest:
             local, remote = args[1], args[2]
             with open(local, "rb") as fh:
                 data = fh.read()
+            if self.corrupt_push and data:
+                data = bytes([data[0] ^ 1]) + data[1:]
             self.files[remote] = data[:-1] if self.short_push else data
             return 0, "1 file pushed"
         if cmd == "install":
@@ -74,6 +80,25 @@ class FakeQuest:
         if line.startswith("cat "):
             path = line[4:].strip("'")
             return (0, self.files[path].decode()) if path in self.files else (1, "No such file")
+        if line.startswith("pm path "):
+            return (0, "package:/data/app/x/base.apk") if self.installed else (1, "")
+        if line.startswith("am force-stop "):
+            return 0, ""
+        if line.startswith("ls -d "):
+            return (0, line[6:].strip("'")) if self.files_dir else (1, "No such file or directory")
+        if line.startswith("md5sum "):
+            import hashlib
+            path = line[7:].strip("'")
+            if path not in self.files:
+                return 1, "No such file"
+            return 0, "%s  %s" % (hashlib.md5(self.files[path]).hexdigest(), path)
+        if line.startswith("chmod "):
+            mode, path = line[6:].split(" ", 1)
+            self.modes[path.strip("'")] = mode
+            return 0, ""
+        if line.startswith("stat -c %a "):
+            path = line[len("stat -c %a "):].strip("'")
+            return (0, self.modes.get(path, "644")) if path in self.files else (1, "No such file")
         if line.startswith("mkdir -p "):
             return 0, ""
         if line.startswith("echo "):
@@ -247,6 +272,102 @@ class TestInstall(Base):
             self.install(quest, signature_check=lambda apk: "signed by another key")
         self.assertIn("another key", str(ctx.exception))
         self.assertFalse({"push", "install"} & {c[0] for c in quest.calls})
+
+
+class TestRestore(Base):
+    """Put a backup's saves back on the Quest (2026-11-13: before uninstalling to test a new signing key)."""
+
+    def saved(self, stamp="20261112_211011", saves=None):
+        quest = FakeQuest(saves or SAVES)
+        return lunacid_vr.backup(self.cfg, lunacid_vr.Device(quest), stamp=stamp)
+
+    def test_newest_backup_goes_back_with_sizes_and_md5(self):
+        self.saved("20261112_211011", {FILES + "/SAVE_0.MIDNIGHT": b"old"})
+        self.saved("20261112_211055")
+        quest = FakeQuest({})                               # a fresh install: no saves yet
+        lunacid_vr.restore(self.cfg, lunacid_vr.Device(quest), say=lambda *a: None)
+        self.assertEqual(quest.files[FILES + "/SAVE_0.MIDNIGHT"], SAVES[FILES + "/SAVE_0.MIDNIGHT"])
+        self.assertEqual(quest.files[FILES + "/SETTINGS.MIDNIGHT"], b"settings")
+        self.assertIn("md5sum", " ".join(quest.adb_words()))
+
+    def test_the_game_is_stopped_before_the_push(self):
+        self.saved()
+        quest = FakeQuest({})
+        lunacid_vr.restore(self.cfg, lunacid_vr.Device(quest), say=lambda *a: None)
+        kinds = [c[0] if c[0] != "shell" else c[1] for c in quest.calls]
+        stop = next(i for i, k in enumerate(kinds) if k.startswith("am force-stop"))
+        self.assertLess(stop, kinds.index("push"))
+
+    def test_saves_on_the_quest_are_backed_up_first(self):
+        self.saved("20261112_211011")
+        newer = {FILES + "/SAVE_0.MIDNIGHT": b"played after the backup"}
+        quest = FakeQuest(newer)
+        lunacid_vr.restore(self.cfg, lunacid_vr.Device(quest), stamp="20261113_100000", say=lambda *a: None)
+        with open(os.path.join(self.cfg["work"], "backups", "20261113_100000", "SAVE_0.MIDNIGHT"), "rb") as fh:
+            self.assertEqual(fh.read(), b"played after the backup")
+
+    def test_a_backup_with_only_settings_is_not_chosen(self):
+        # 2026-11-13: after a fresh install the game's first launch writes a default SETTINGS; restore backs it up
+        # first, and that newer folder must not win over the one with the progress.
+        self.saved("20261113_081352")
+        self.saved("20261113_082118", {FILES + "/SETTINGS.MIDNIGHT": b"defaults"})
+        quest = FakeQuest({})
+        lunacid_vr.restore(self.cfg, lunacid_vr.Device(quest), say=lambda *a: None)
+        self.assertEqual(quest.files[FILES + "/SAVE_0.MIDNIGHT"], SAVES[FILES + "/SAVE_0.MIDNIGHT"])
+
+    def test_a_chosen_backup(self):
+        first = self.saved("20261112_211011", {FILES + "/SAVE_0.MIDNIGHT": b"first"})
+        self.saved("20261112_211055")
+        quest = FakeQuest({})
+        lunacid_vr.restore(self.cfg, lunacid_vr.Device(quest), folder=first, say=lambda *a: None)
+        self.assertEqual(quest.files[FILES + "/SAVE_0.MIDNIGHT"], b"first")
+
+    def test_the_game_can_write_its_restored_saves(self):
+        # 2026-11-13 on the Quest: pushed files belong to shell (2000) with 644, and the game runs as its own uid
+        # outside group ext_data_rw, so it could read the save but not write it again.
+        self.saved()
+        quest = FakeQuest({})
+        lunacid_vr.restore(self.cfg, lunacid_vr.Device(quest), say=lambda *a: None)
+        for name in ("SAVE_0.MIDNIGHT", "SETTINGS.MIDNIGHT"):
+            self.assertEqual(quest.modes.get(FILES + "/" + name), "666")
+
+    def test_not_installed_refuses(self):
+        self.saved()
+        quest = FakeQuest({})
+        quest.installed = False
+        with self.assertRaises(lunacid_vr.Problem) as ctx:
+            lunacid_vr.restore(self.cfg, lunacid_vr.Device(quest), say=lambda *a: None)
+        self.assertIn("install", str(ctx.exception))
+        self.assertNotIn("push", [c[0] for c in quest.calls])
+
+    def test_game_never_opened_refuses(self):
+        self.saved()
+        quest = FakeQuest({})
+        quest.files_dir = False
+        with self.assertRaises(lunacid_vr.Problem) as ctx:
+            lunacid_vr.restore(self.cfg, lunacid_vr.Device(quest), say=lambda *a: None)
+        self.assertIn("open the game once", str(ctx.exception))
+        self.assertNotIn("push", [c[0] for c in quest.calls])
+
+    def test_a_damaged_copy_fails(self):
+        self.saved()
+        quest = FakeQuest({})
+        quest.corrupt_push = True
+        with self.assertRaises(lunacid_vr.Problem) as ctx:
+            lunacid_vr.restore(self.cfg, lunacid_vr.Device(quest), say=lambda *a: None)
+        self.assertIn("SAVE_0.MIDNIGHT", str(ctx.exception))
+
+    def test_no_backup_is_a_clear_error(self):
+        with self.assertRaises(lunacid_vr.Problem):
+            lunacid_vr.restore(self.cfg, lunacid_vr.Device(FakeQuest({})), say=lambda *a: None)
+
+    def test_never_uninstalls_or_clears(self):
+        self.saved()
+        quest = FakeQuest({})
+        lunacid_vr.restore(self.cfg, lunacid_vr.Device(quest), say=lambda *a: None)
+        words = " ".join(quest.adb_words())
+        self.assertNotIn("uninstall", words)
+        self.assertNotIn("pm clear", words)
 
 
 class TestBuild(unittest.TestCase):

@@ -140,6 +140,7 @@ lose your saves. Every `backup` and `install` copies the key into the backup, bu
 | `python3 lunacid_vr.py build [--fast]` | Builds the APK (and the OBB on a full build) |
 | `python3 lunacid_vr.py backup` | Copies the Quest's saves and the signing key |
 | `python3 lunacid_vr.py install` | Backs up, then installs the newest build. Never uninstalls |
+| `python3 lunacid_vr.py restore [folder]` | Puts a backup's saves back on the Quest (the newest backup with saves). Open the game once after installing first |
 
 With two headsets connected, pick one with `ANDROID_SERIAL=<serial>` (from `adb devices`).
 

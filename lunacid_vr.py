@@ -6,6 +6,7 @@ Lunacid VR: build the Quest port and put it on the headset, on macOS or Windows.
     python3 lunacid_vr.py build [--fast]    # build the APK (and OBB); see tools/build/build.py
     python3 lunacid_vr.py backup            # copy the Quest's saves and this machine's signing key
     python3 lunacid_vr.py install           # backup, then put the newest build on the Quest (never uninstalls)
+    python3 lunacid_vr.py restore [folder]  # put a backup's saves back on the Quest
 
 Paths come from core/config.py (LUNA_<KEY>, then local.json, then defaults).
 """
@@ -152,6 +153,73 @@ def backup(cfg, dev, stamp=None):
         json.dump({"saves": copied, "keystore": os.path.isdir(key)}, fh, indent=2)
     return out
 
+
+BACKUP_FOLDER = re.compile(r"^\d{8}_\d{6}$")
+
+
+def newest_backup(cfg):
+    """The newest <work>/backups/<date-time> folder that holds a game save (SAVE_*). A folder with only SETTINGS is
+    skipped: after a fresh install the game's first launch writes default settings, and restore backs those up
+    before pushing, so that folder is newer than the one with the progress."""
+    root = os.path.join(cfg["work"], "backups")
+    for name in sorted((n for n in (os.listdir(root) if os.path.isdir(root) else []) if BACKUP_FOLDER.match(n)),
+                       reverse=True):
+        manifest = os.path.join(root, name, "backup.json")
+        if os.path.exists(manifest):
+            with open(manifest, encoding="utf-8") as fh:
+                if any(n.startswith("SAVE_") for n in json.load(fh).get("saves", {})):
+                    return os.path.join(root, name)
+    raise Problem("no backup with a game save (SAVE_*) in %s: run 'python3 lunacid_vr.py backup' first" % root)
+
+
+def _md5(path):
+    import hashlib
+    with open(path, "rb") as fh:
+        return hashlib.md5(fh.read()).hexdigest()
+
+
+def restore(cfg, dev, folder=None, stamp=None, say=print):
+    """Put a backup's saves back on the Quest (the newest backup with saves, or folder). The game must be installed
+    and opened once (it makes its files folder). Saves already on the Quest are backed up first; the game is
+    stopped so it cannot write over them; each file is checked by size and md5 on the headset."""
+    folder = folder or newest_backup(cfg)
+    manifest = os.path.join(folder, "backup.json")
+    if not os.path.exists(manifest):
+        raise Problem("%s is not a backup made by this tool (no backup.json)" % folder)
+    with open(manifest, encoding="utf-8") as fh:
+        saves = json.load(fh)["saves"]
+    if not saves:
+        raise Problem("%s has no saves" % folder)
+    dev.require()
+    rc, out = dev.shell("pm path %s" % PKG)
+    if rc != 0 or "package:" not in out:
+        raise Problem("the game is not installed on the Quest: run 'python3 lunacid_vr.py install' first")
+    rc, _ = dev.shell("ls -d %s" % _q(SAVES_DIR))
+    if rc != 0:
+        raise Problem("the game has no files folder yet: open the game once on the Quest, quit, then restore")
+    dev.shell("am force-stop %s" % PKG)
+    if dev.sizes(SAVES_DIR, ".MIDNIGHT"):
+        say("saves on the Quest backed up first: %s" % backup(cfg, dev, stamp=stamp))
+    for name, size in sorted(saves.items()):
+        local = os.path.join(folder, name)
+        if not os.path.exists(local) or os.path.getsize(local) != size:
+            raise Problem("%s in %s is missing or not %d bytes as recorded: not restoring" % (name, folder, size))
+        remote = "%s/%s" % (SAVES_DIR, name)
+        dev.push(local, remote)
+        # adb push leaves the file owned by shell with 644; the game runs as its own uid outside group ext_data_rw,
+        # so it could read the save but never write it again. The folder (drwxrws---, owned by the game) still
+        # keeps every other app out.
+        dev.shell("chmod 666 %s" % _q(remote))
+        rc, mode = dev.shell("stat -c %%a %s" % _q(remote))
+        if rc != 0 or mode.strip() != "666":
+            raise Problem("could not let the game write %s on the Quest (mode %s)" % (name, mode.strip()))
+        rc, out = dev.shell("md5sum %s" % _q(remote))
+        got = out.split()[0] if rc == 0 and out.split() else None
+        if dev.size(remote) != size or got != _md5(local):
+            raise Problem("%s on the Quest does not match the backup after the push: the backup is still in %s"
+                          % (name, folder))
+    say("restored %d saves from %s" % (len(saves), folder))
+    return folder
 
 APK_NAME = "Lunacid_Quest.apk"
 OBB_NAME = "Lunacid_Quest.main.obb"
@@ -409,6 +477,8 @@ def main(argv=None):
     i = sub.add_parser("install", help="backup, then install the newest build (never uninstalls)")
     i.add_argument("--apk", help="install this APK instead of the newest build's")
     i.add_argument("--obb", help="with --apk: the OBB to push when it changed")
+    r = sub.add_parser("restore", help="put a backup's saves back on the Quest (the newest backup with saves)")
+    r.add_argument("folder", nargs="?", help="a <work>/backups/<date-time> folder")
     args = ap.parse_args(argv)
     cfg = config.load()
     try:
@@ -426,6 +496,8 @@ def main(argv=None):
         dev = Device(run, serial=pick_serial(run))
         if args.command == "backup":
             print("backup in %s" % backup(cfg, dev))
+        elif args.command == "restore":
+            restore(cfg, dev, folder=args.folder and os.path.abspath(os.path.expanduser(args.folder)))
         elif args.command == "install":
             install(cfg, dev, apk=args.apk, obb=args.obb)
         return 0
