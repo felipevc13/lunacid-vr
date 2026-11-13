@@ -464,9 +464,19 @@ class TestBuildMakesTheProjectFirst(Base):
         self.assertEqual(scripts, ["assetripper.py", "make_shaders.py", "build.py"])
         self.assertEqual(seen[0][seen[0].index("--out") + 1], os.path.join(self.work, "project"))
 
+    def test_a_half_export_is_extracted_again(self):
+        project = os.path.join(self.work, "project", "ExportedProject")
+        os.makedirs(os.path.join(project, "Assets"))             # no mark, never opened by Unity
+        os.makedirs(os.path.join(self.work, "shader_gen", "generated"))
+        seen = []
+        lunacid_vr.build(cfg={"work": self.work, "project": project, "game_data": "x"},
+                         run=lambda cmd: seen.append(cmd) or 0)
+        self.assertEqual([os.path.basename(c[1]) for c in seen], ["assetripper.py", "build.py"])
+
     def test_existing_project_goes_straight_to_the_build(self):
         project = os.path.join(self.work, "project", "ExportedProject")
         os.makedirs(os.path.join(project, "Assets"))
+        os.makedirs(os.path.join(project, "Library"))
         os.makedirs(os.path.join(self.work, "shader_gen", "generated"))
         seen = []
         lunacid_vr.build(cfg={"work": self.work, "project": project, "game_data": "x"},

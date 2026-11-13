@@ -83,6 +83,8 @@ def wrong_settings(log_text, settings):
 
 
 def wait_line(log, text, proc, limit_s, start_size=0):
+    """Wait for text in AssetRipper's log; an "[Error]" line there stops the wait at once (on Windows an export
+    once failed and the script waited for nothing)."""
     end = time.time() + limit_s
     while time.time() < end:
         if proc.poll() is not None:
@@ -90,8 +92,12 @@ def wait_line(log, text, proc, limit_s, start_size=0):
         if os.path.exists(log):
             with open(log, encoding="utf-8", errors="ignore") as fh:
                 fh.seek(start_size)
-                if text in fh.read():
-                    return
+                new = fh.read()
+            if text in new:
+                return
+            error = next((line.strip() for line in new.splitlines() if line.startswith("[Error]")), None)
+            if error:
+                raise RuntimeError("AssetRipper failed: %s (its log: %s)" % (error[:300], log))
         time.sleep(3)
     raise TimeoutError("no %r in %s after %d min" % (text, log, limit_s // 60))
 
@@ -115,7 +121,34 @@ def check_export(project, profile):
     return problems
 
 
+DONE = "lunacid_export_complete.json"
+
+
+def is_complete(project):
+    """A finished export: marked by mark_complete, or (made before the mark) already opened by Unity."""
+    return os.path.exists(os.path.join(project, DONE)) or os.path.isdir(os.path.join(project, "Library"))
+
+
+def mark_complete(project):
+    import json
+    with open(os.path.join(project, DONE), "w", encoding="utf-8") as fh:
+        json.dump({"assetripper": VERSION, "date": time.strftime("%Y-%m-%dT%H:%M:%S")}, fh)
+
+
+def put_aside_incomplete(out):
+    """An ExportedProject left by a failed export is renamed aside (kept, not deleted); returns where, or None."""
+    project = os.path.join(out, "ExportedProject")
+    if not os.path.isdir(project) or is_complete(project):
+        return None
+    aside = os.path.join(out, "ExportedProject.incomplete_%s" % time.strftime("%Y%m%d_%H%M%S"))
+    os.rename(project, aside)
+    return aside
+
+
 def export(assetripper, game, out, limit_min=180):
+    aside = put_aside_incomplete(out)
+    if aside:
+        print("an earlier export did not finish: moved aside to %s" % aside)
     if os.path.exists(os.path.join(out, "ExportedProject")):
         sys.exit("%s already holds an ExportedProject: choose an empty folder" % out)
     os.makedirs(out, exist_ok=True)
@@ -124,7 +157,9 @@ def export(assetripper, game, out, limit_min=180):
     before = set(glob.glob(os.path.join(ar_dir, "AssetRipper_*.log")))
     # Never a pipe: AssetRipper prints a line per asset, and a pipe nobody reads fills at 64 KB and stops the
     # export for good (LESSONS 31). Its own log file is read for progress instead.
-    console = open(os.path.join(out, "assetripper_console.log"), "w")
+    # Outside out: AssetRipper deletes that folder before exporting, and Windows cannot delete an open file.
+    console = open(os.path.join(os.path.dirname(os.path.abspath(out)),
+                                "assetripper_console_%s.log" % os.path.basename(os.path.abspath(out))), "w")
     try:
         proc = subprocess.Popen([assetripper, "--headless", "--port", str(port)], cwd=ar_dir,
                                 stdout=console, stderr=subprocess.STDOUT)
@@ -206,6 +241,8 @@ def main():
     problems = check_export(os.path.join(out, "ExportedProject"), profile)
     if problems:
         sys.exit("FAIL: " + "; ".join(problems))
+    if not args.check:
+        mark_complete(os.path.join(out, "ExportedProject"))
     print("RESULT: export looks complete (%d scenes, lightmaps as EXR, decompiled scripts)" % len(profile.get("scenes", [])))
 
 

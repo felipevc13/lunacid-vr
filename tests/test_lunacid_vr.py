@@ -403,6 +403,7 @@ class TestBuild(unittest.TestCase):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         os.makedirs(os.path.join(tmp, "project", "ExportedProject", "Assets"))
+        os.makedirs(os.path.join(tmp, "project", "ExportedProject", "Library"))
         os.makedirs(os.path.join(tmp, "shader_gen", "generated"))
         return {"work": tmp, "project": os.path.join(tmp, "project", "ExportedProject"), "game_data": "x"}
 

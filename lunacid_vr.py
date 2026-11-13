@@ -401,7 +401,9 @@ def build(fast=False, skip_passes=False, run=None, cfg=None):
     run = run or (lambda cmd: subprocess.call(cmd))
     steps = []
     project = cfg["project"]
-    if not os.path.isdir(os.path.join(project, "Assets")):
+    sys.path.insert(0, os.path.join(REPO, "tools", "extract"))
+    import assetripper
+    if not (os.path.isdir(os.path.join(project, "Assets")) and assetripper.is_complete(project)):
         if os.path.basename(os.path.normpath(project)) != "ExportedProject":
             raise Problem("no Unity project at %s: the export makes <folder>/ExportedProject, so set project in "
                           "local.json to a path ending in ExportedProject" % project)
