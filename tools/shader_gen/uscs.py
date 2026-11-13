@@ -59,9 +59,21 @@ def remove_appledouble(top):
     return n
 
 
-def run(cmd, cwd=None, env=None):
-    print("+", " ".join(cmd), flush=True)
-    subprocess.run(cmd, cwd=cwd, env=env, check=True)
+def run(cmd, cwd=None, env=None, log=None):
+    """Run a tool. With log, its output goes there (compiler warnings look like errors to people new to this) and
+    only a failure shows the end of it."""
+    if not log:
+        print("+", " ".join(cmd), flush=True)
+        subprocess.run(cmd, cwd=cwd, env=env, check=True)
+        return
+    with open(log, "a", encoding="utf-8", errors="replace") as fh:
+        fh.write("\n+ %s\n" % " ".join(cmd))
+        fh.flush()
+        rc = subprocess.call(cmd, cwd=cwd, env=env, stdout=fh, stderr=subprocess.STDOUT)
+    if rc != 0:
+        with open(log, encoding="utf-8", errors="replace") as fh:
+            tail = "".join(fh.readlines()[-25:])
+        sys.exit("%s failed (exit code %d). The end of %s:\n%s" % (os.path.basename(cmd[0]), rc, log, tail))
 
 
 def build(args):
@@ -69,19 +81,22 @@ def build(args):
     up = json.load(open(os.path.join(USCS_DIR, "UPSTREAM.json"), encoding="utf-8"))
     dotnet = find_dotnet(args.dotnet, args.work)
     os.makedirs(p["root"], exist_ok=True)
+    log = os.path.join(p["root"], "uscs_build.log")
+    open(log, "w").close()
+    print("Preparing the shader decompiler (USCSandbox, once)...", flush=True)
     if not os.path.isdir(os.path.join(p["src"], ".git")):
         # LF line endings whatever the user's git does (Windows' autocrlf), or the patches do not apply
-        run(["git", "-c", "core.autocrlf=false", "clone", "--quiet", up["repo"], p["src"]])
-    run(["git", "config", "core.autocrlf", "false"], cwd=p["src"])
-    run(["git", "fetch", "--quiet", "origin"], cwd=p["src"])
-    run(["git", "checkout", "--quiet", "--force", up["commit"]], cwd=p["src"])
+        run(["git", "-c", "core.autocrlf=false", "clone", "--quiet", up["repo"], p["src"]], log=log)
+    run(["git", "config", "core.autocrlf", "false"], cwd=p["src"], log=log)
+    run(["git", "fetch", "--quiet", "origin"], cwd=p["src"], log=log)
+    run(["git", "checkout", "--quiet", "--force", up["commit"]], cwd=p["src"], log=log)
     # On exFAT, macOS keeps ._ files beside the last build's outputs; git clean failed on them
     # ("could not lstat .../._USCSandbox.assets.cache") on the second build. Remove them first.
     remove_appledouble(p["src"])
-    run(["git", "clean", "-fdxq"], cwd=p["src"])
+    run(["git", "clean", "-fdxq"], cwd=p["src"], log=log)
     patches = sorted(f for f in os.listdir(os.path.join(USCS_DIR, "patches")) if f.endswith(".patch"))
     for f in patches:
-        run(["git", "apply", os.path.join(USCS_DIR, "patches", f)], cwd=p["src"])
+        run(["git", "apply", os.path.join(USCS_DIR, "patches", f)], cwd=p["src"], log=log)
     remove_appledouble(p["src"])
     work = os.path.abspath(os.path.expanduser(args.work))
     if os.path.abspath(dotnet).startswith(work + os.sep):
@@ -89,11 +104,11 @@ def build(args):
     env = dict(os.environ, DOTNET_CLI_TELEMETRY_OPTOUT="1", DOTNET_NOLOGO="1",
                DOTNET_ROOT=os.path.dirname(dotnet))
     run([dotnet, "build", "-c", "Release", os.path.join(p["src"], "USCSandbox", "USCSandbox.csproj"),
-         "-o", p["bin"]], env=env)
+         "-o", p["bin"]], env=env, log=log)
     shutil.copy(os.path.join(p["src"], "Files", "classdata.tpk"), p["bin"])
     json.dump({"commit": up["commit"], "patches": patches, "dotnet": dotnet},
               open(os.path.join(p["bin"], "build.json"), "w", encoding="utf-8"), indent=2)
-    print("USCSandbox built in", p["bin"])
+    print("Shader decompiler ready (details: %s)" % log)
 
 
 def uscs(p, dotnet, argv):
@@ -141,7 +156,11 @@ def decompile(args):
         sys.exit("Not found in %s: %s" % (data, ", ".join(missing)))
     os.makedirs(p["out"], exist_ok=True)
     failed = []
-    for name in wanted:
+    sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
+    from core import progress
+    lang = progress.language()
+    for i, name in enumerate(wanted, 1):
+        progress.live(("Shaders: %d de %d" if lang == "pt" else "Shaders: %d of %d") % (i, len(wanted)))
         e = index[name]
         r = uscs(p, dotnet, ["null", os.path.join(data, e["file"]), str(e["path_id"])])
         made = os.path.join(p["run"], "out", name + ".shader")
@@ -153,6 +172,7 @@ def decompile(args):
         e["decompiled"] = output_name(name)
     json.dump({"data": data, "uscs": build_info, "shaders": index},
               open(os.path.join(p["out"], "index.json"), "w", encoding="utf-8"), indent=2)
+    print()
     print("%d decompiled, %d failed -> %s" % (len(wanted) - len(failed), len(failed), p["out"]))
     if failed:
         sys.exit(1)

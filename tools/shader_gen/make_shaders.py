@@ -20,9 +20,12 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def step(args):
-    print("\n==>", " ".join(os.path.basename(a) if i == 0 else a for i, a in enumerate(args)), flush=True)
-    subprocess.run([sys.executable] + args, check=True)
+def step(args, label=None):
+    """Run one stage; the screen gets a plain sentence, not the command line."""
+    print("\n" + (label or " ".join(os.path.basename(a) if i == 0 else a for i, a in enumerate(args))), flush=True)
+    res = subprocess.run([sys.executable] + args)
+    if res.returncode:
+        sys.exit(res.returncode)
 
 
 def main():
@@ -44,12 +47,13 @@ def main():
         cmd = [os.path.join(HERE, "uscs.py"), "build", "--work", a.work]
         if a.dotnet:
             cmd += ["--dotnet", a.dotnet]
-        step(cmd)
+        step(cmd, "Building the shader decompiler (once, about a minute)...")
     else:
         print("USCSandbox already built with the pinned commit and patches")
 
-    step([os.path.join(HERE, "uscs.py"), "decompile", "--work", a.work, "--data", a.data])
-    step([os.path.join(HERE, "generate.py"), "--work", a.work])
+    step([os.path.join(HERE, "uscs.py"), "decompile", "--work", a.work, "--data", a.data],
+         "Reading the game's shaders from your copy...")
+    step([os.path.join(HERE, "generate.py"), "--work", a.work], "Making the Quest versions of the shaders...")
 
     gen = os.path.join(root, "generated")
     wanted = json.load(open(os.path.join(HERE, "port_shaders.json"), encoding="utf-8"))["shaders"]
@@ -57,7 +61,7 @@ def main():
     if missing:
         sys.exit("Missing for the port: " + ", ".join(missing))
     print("\n%d of %d port shaders made in %s" % (len(wanted), len(wanted), gen))
-    print("Use them:  LUNA_SHADER_SOURCE=%s" % gen)
+
 
 
 if __name__ == "__main__":

@@ -411,5 +411,37 @@ class TestPassShaderSource(unittest.TestCase):
         self.assertLessEqual(game, set(self.wanted))
 
 
+class TestQuietOnScreen(unittest.TestCase):
+    """2026-11-13 on the notebook: the .NET build printed 27 compiler warnings ('Desreferência de uma referência
+    possivelmente nula') and Felipe asked whether that was normal. For a layperson it looks like an error: the
+    tools' output goes to a log, the screen gets one line, and the log is shown only when something fails."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp)
+
+    def test_output_goes_to_the_log(self):
+        import contextlib
+        import io
+        log = os.path.join(self.tmp, "build.log")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            uscs.run([sys.executable, "-c", "print('warning CS8602: noisy')"], log=log)
+        self.assertNotIn("CS8602", out.getvalue())
+        with open(log, encoding="utf-8") as fh:
+            self.assertIn("CS8602", fh.read())
+
+    def test_a_failure_shows_the_end_of_the_log(self):
+        log = os.path.join(self.tmp, "build.log")
+        with self.assertRaises(SystemExit) as ctx:
+            uscs.run([sys.executable, "-c", "import sys; print('error CS1002: ; expected'); sys.exit(3)"], log=log)
+        self.assertIn("error CS1002", str(ctx.exception))
+        self.assertIn(log, str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()
