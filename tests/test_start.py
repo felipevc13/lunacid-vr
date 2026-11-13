@@ -134,6 +134,28 @@ class TestStart(unittest.TestCase):
         self.assertIn("Fontes desconhecidas", text)
 
 
+class TestNoTracebacks(unittest.TestCase):
+    """A crash shows a sentence saying what to do; the details go to a log file."""
+
+    def test_an_unexpected_error_in_a_step_is_a_sentence(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        s = Steps()
+
+        def boom():
+            raise OSError("[WinError 740] A operação solicitada requer elevação")
+        s.setup = boom
+        rc = lunacid_vr.start(s, lang="pt", log_dir=tmp)
+        self.assertNotEqual(rc, 0)
+        text = "\n".join(s.said)
+        self.assertIn("WinError 740", text)
+        self.assertIn("rode o mesmo comando de novo", text)
+        logs = os.listdir(tmp)
+        self.assertEqual(len(logs), 1)
+        with open(os.path.join(tmp, logs[0]), encoding="utf-8") as fh:
+            self.assertIn("Traceback", fh.read())
+
+
 class TestLanguage(unittest.TestCase):
     def test_portuguese_computers(self):
         self.assertEqual(lunacid_vr.language({"LANG": "pt_BR.UTF-8"}, None), "pt")

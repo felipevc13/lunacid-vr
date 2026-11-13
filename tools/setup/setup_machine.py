@@ -72,10 +72,13 @@ def download(url, dest):
 
 def run(cmd, interactive=False):
     """(exit code, output). interactive: the program talks to the person in this terminal (SteamCMD's password)."""
-    if interactive:
-        return subprocess.call(cmd), ""
-    res = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
-    return res.returncode, res.stdout + res.stderr
+    try:
+        if interactive:
+            return subprocess.call(cmd), ""
+        res = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+        return res.returncode, res.stdout + res.stderr
+    except OSError as e:     # a program that cannot start (missing, or Windows wants elevation) is an answer
+        return 1, str(e)
 
 
 def sha256(path):
@@ -283,13 +286,25 @@ def unity_command(hub, editor, android):
 HUB_INSTALLER = "https://public-cdn.cloud.unity3d.com/hub/prod/UnityHubSetup-%s.%s"   # x64 / arm64; exe / dmg
 
 
+def hub_candidates(system):
+    """Where Unity Hub may be: its default place, and on Windows a per-user install."""
+    places = [HUB[system]]
+    if system == "Windows":
+        local = os.environ.get("LOCALAPPDATA")
+        if local:
+            places.append(os.path.join(local, "Programs", "Unity Hub", "Unity Hub.exe"))
+    return places
+
+
 def ensure_hub(system, runner=run, exists=os.path.exists, which=shutil.which, say=print, fetch=download,
-               cpu=None, tools=None):
-    """Unity Hub's program, installed when missing: winget on Windows (else Unity's own installer, silent), Unity's
-    disk image on a Mac (copied to Applications)."""
-    hub = HUB[system]
-    if exists(hub):
+               cpu=None, tools=None, candidates=None):
+    """Unity Hub's program, installed when missing: winget on Windows (else Unity's own installer, silent, with the
+    permission prompt), Unity's disk image on a Mac (copied to Applications)."""
+    candidates = candidates or hub_candidates(system)
+    hub = next((c for c in candidates if exists(c)), None)
+    if hub:
         return hub
+    hub = HUB[system]
     cpu = cpu or arch()
     tools = tools or os.path.join(os.path.expanduser("~"), "lunacid-work", "tools")
     out = ""
@@ -298,11 +313,15 @@ def ensure_hub(system, runner=run, exists=os.path.exists, which=shutil.which, sa
             say("installing Unity Hub (winget; Windows may ask for permission)...")
             rc, out = runner(["winget", "install", "--id", "Unity.UnityHub", "-e", "--accept-source-agreements",
                               "--accept-package-agreements"])
+            if not exists(hub):
+                say("winget did not install it: %s" % (out.strip().splitlines() or ["no output"])[-1])
         if not exists(hub):
             installer = os.path.join(tools, "downloads", "UnityHubSetup-%s.exe" % cpu)
-            say("installing Unity Hub (Unity's installer; Windows may ask for permission)...")
+            say("installing Unity Hub (Unity's installer): Windows asks for permission, choose Yes...")
             fetch(HUB_INSTALLER % (cpu, "exe"), installer)
-            rc, out = runner([installer, "/S"])
+            # It installs for every user, so it needs elevation ([WinError 740] when started directly).
+            rc, out = runner(["powershell", "-NoProfile", "-Command",
+                              "Start-Process -FilePath '%s' -ArgumentList '/S' -Verb RunAs -Wait" % installer])
     else:
         dmg = os.path.join(tools, "downloads", "UnityHubSetup-%s.dmg" % cpu)
         say("installing Unity Hub (Unity's disk image)...")

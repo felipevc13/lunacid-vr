@@ -276,10 +276,55 @@ class TestUnity(Base):
         url = "https://public-cdn.cloud.unity3d.com/hub/prod/UnityHubSetup-x64.exe"
         fake = Fake({url: b"exe"})
         done = []
-        fake.rules.append((lambda c: c[0].endswith("UnityHubSetup-x64.exe"), lambda c: (done.append(c), (0, ""))[1]))
+        fake.rules.append((lambda c: c[0] == "powershell", lambda c: (done.append(c), (0, ""))[1]))
         sm.ensure_hub("Windows", fake.run, exists=lambda p: bool(done), which=lambda n: None, say=lambda *a: None,
                       fetch=fake.download, cpu="x64", tools=self.tools)
-        self.assertEqual(done[0][-1], "/S")        # silent install
+        self.assertIn("UnityHubSetup-x64.exe' -ArgumentList '/S'", done[0][-1])   # silent install, elevated
+
+
+class TestWindowsInstallerNeedsPermission(Base):
+    """2026-11-13 on the notebook: Unity's installer refused to start without elevation ('[WinError 740] A operação
+    solicitada requer elevação') and setup died with a traceback."""
+
+    def test_a_program_that_cannot_start_is_an_answer_not_a_crash(self):
+        rc, out = sm.run(["this-program-does-not-exist-anywhere"])
+        self.assertNotEqual(rc, 0)
+        self.assertTrue(out)
+
+    def test_the_installer_is_run_again_asking_for_permission(self):
+        url = "https://public-cdn.cloud.unity3d.com/hub/prod/UnityHubSetup-x64.exe"
+        fake = Fake({url: b"exe"})
+        done = []
+        fake.rules.append((lambda c: c[0].endswith("UnityHubSetup-x64.exe"),
+                           lambda c: (1, "[WinError 740] A operação solicitada requer elevação")))
+        fake.rules.append((lambda c: c[0] == "powershell" and "RunAs" in " ".join(c),
+                           lambda c: (done.append(c), (0, ""))[1]))
+        hub = sm.ensure_hub("Windows", fake.run, exists=lambda p: bool(done) and p == sm.HUB["Windows"],
+                            which=lambda n: None, say=lambda *a: None, fetch=fake.download, cpu="x64",
+                            tools=self.tools)
+        self.assertEqual(hub, sm.HUB["Windows"])
+        line = " ".join(done[0])
+        self.assertIn("Start-Process", line)
+        self.assertIn("-Wait", line)
+        self.assertIn("/S", line)
+
+    def test_a_hub_installed_elsewhere_is_found(self):
+        other = os.path.join(self.tmp, "Programs", "Unity Hub", "Unity Hub.exe")
+        write(other, b"exe")
+        hub = sm.ensure_hub("Windows", Fake().run, which=lambda n: None, say=lambda *a: None,
+                            candidates=[sm.HUB["Windows"], other])
+        self.assertEqual(hub, other)
+
+    def test_winget_failing_says_what_it_answered(self):
+        url = "https://public-cdn.cloud.unity3d.com/hub/prod/UnityHubSetup-x64.exe"
+        fake = Fake({url: b"exe"})
+        said = []
+        fake.rules.append((lambda c: c[0] == "winget", lambda c: (1, "No package found matching input criteria.")))
+        fake.rules.append((lambda c: True, lambda c: (0, "")))
+        with self.assertRaises(sm.Problem):
+            sm.ensure_hub("Windows", fake.run, exists=lambda p: False, which=lambda n: "winget", say=said.append,
+                          fetch=fake.download, cpu="x64", tools=self.tools)
+        self.assertTrue(any("No package found" in line for line in said), said)
 
 
 class TestSignIn(Base):

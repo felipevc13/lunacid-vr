@@ -537,6 +537,8 @@ TEXT = {
         "failed": "Something went wrong above. Fix what it says and run the same command again: finished steps are "
                   "skipped.",
         "done": "Done! In the headset: Library, filter at the top, Unknown sources, Lunacid VR. Have fun.",
+        "crash": "Something unexpected happened: %s\nDetails in: %s\nRun the same command again; if it happens "
+                 "again, send that file with your question.",
     },
     "pt": {
         "hello": "Lunacid VR: isto coloca o Lunacid no seu Quest, gerado a partir da sua cópia do jogo.\n"
@@ -559,6 +561,8 @@ TEXT = {
         "failed": "Algo deu errado acima. Resolva o que a mensagem diz e rode o mesmo comando de novo: os passos "
                   "prontos são pulados.",
         "done": "Pronto! No headset: Biblioteca, filtro no alto, Fontes desconhecidas, Lunacid VR. Bom jogo.",
+        "crash": "Algo inesperado aconteceu: %s\nDetalhes em: %s\nResolva o que der e rode o mesmo comando de "
+                 "novo; se acontecer de novo, envie esse arquivo junto com a sua pergunta.",
     },
 }
 
@@ -580,9 +584,25 @@ def language(env=None, system_locale=None):
     return "en"
 
 
-def start(steps, lang="en", tries=30):
-    """From nothing to the game on the Quest: setup, build, install (and saves), each skipped when done."""
+def start(steps, lang="en", tries=30, log_dir=None):
+    """From nothing to the game on the Quest: setup, build, install (and saves), each skipped when done. An
+    unexpected error is a sentence on screen and a traceback in <log_dir>, never a traceback on screen."""
     t = TEXT[lang]
+    try:
+        return _start(steps, t, tries)
+    except Exception as e:   # noqa: BLE001: the person needs a sentence, the details go to a file
+        import traceback
+        log_dir = log_dir or os.path.join(os.path.expanduser("~"), "lunacid-work", "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        path = os.path.join(log_dir, "error_%s.log" % datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(traceback.format_exc())
+        steps.say("")
+        steps.say(t["crash"] % (e, path))
+        return 1
+
+
+def _start(steps, t, tries):
     say, ask = steps.say, steps.ask
     say(t["hello"])
     say("")
@@ -728,7 +748,8 @@ def main(argv=None):
     cfg = config.load()
     try:
         if args.command == "start":
-            return start(RealSteps(config.load, runner.load_profile()), lang=language())
+            return start(RealSteps(config.load, runner.load_profile()), lang=language(),
+                         log_dir=os.path.join(cfg["work"], "logs"))
         if args.command == "setup":
             sm = _setup()
             try:
