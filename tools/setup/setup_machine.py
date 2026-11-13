@@ -78,9 +78,9 @@ def progress_line(label, done, total, seconds=None, lang="en"):
 
 
 def _live(line, end=False):
-    """One line that updates in place."""
-    sys.stdout.write("\r" + line + " " * 8 + ("\n" if end else ""))
-    sys.stdout.flush()
+    """One line that updates in place (core/progress.py)."""
+    from core import progress
+    progress.live(line, end)
 
 
 def download(url, dest, label=None, say=None, lang=None):

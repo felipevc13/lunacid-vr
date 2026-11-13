@@ -34,10 +34,15 @@ def time_left(fraction, seconds, lang="en"):
     return "about %d min left" % minutes
 
 
+_LAST = [0]
+
+
 def live(line, end=False):
-    """One line that updates in place."""
-    sys.stdout.write("\r" + line + " " * 8 + ("\n" if end else ""))
+    """One line that updates in place; spaces cover whatever a longer previous line left."""
+    pad = max(0, _LAST[0] - len(line))
+    sys.stdout.write("\r" + line + " " * pad + ("\n" if end else ""))
     sys.stdout.flush()
+    _LAST[0] = 0 if end else len(line)
 
 
 # ---------- AssetRipper

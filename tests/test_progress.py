@@ -164,6 +164,20 @@ class TestRealBuildLog(unittest.TestCase):
         self.assertLess(seen.index("pack"), seen.index("gradle"))
 
 
+class TestLiveLine(unittest.TestCase):
+    def test_a_shorter_line_clears_what_the_longer_one_left(self):
+        # 2026-11-13 on the notebook: "...compiling shaders (42 so far), 22 min   an a minute left".
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            progress.live("Build: importing the project, 99% (10262 of 8260), less than a minute left")
+            progress.live("Build: compiling shaders (42 so far), 22 min")
+        last = out.getvalue().split("\r")[-1]
+        self.assertEqual(last.rstrip(), "Build: compiling shaders (42 so far), 22 min")
+        self.assertGreaterEqual(len(last), len("Build: importing the project, 99% (10262 of 8260), less than a minute left"))
+
+
 class TestFriendlyErrors(unittest.TestCase):
     """2026-11-13: the build died inside pass_lightmap_import and the person saw a Python traceback. Every tool
     run on its own (build, extraction, shaders) turns an unexpected error into a sentence and a log file."""
