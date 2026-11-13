@@ -327,6 +327,47 @@ class TestWindowsInstallerNeedsPermission(Base):
         self.assertTrue(any("No package found" in line for line in said), said)
 
 
+class TestProgress(Base):
+    """Felipe: a download with no number looks stuck, and people give up. Show how far each one is."""
+
+    def test_a_download_says_its_percentage(self):
+        src = os.path.join(self.tmp, "big.bin")
+        write(src, b"x" * (3 * 1024 * 1024 + 7))
+        said = []
+        dest = os.path.join(self.tmp, "out", "big.bin")
+        sm.download("file://" + src, dest, label="AssetRipper", say=said.append)
+        with open(dest, "rb") as fh:
+            self.assertEqual(len(fh.read()), 3 * 1024 * 1024 + 7)
+        self.assertTrue(any("100%" in line and "AssetRipper" in line for line in said), said)
+        self.assertTrue(any("MB" in line for line in said), said)
+
+    def test_percentage_line(self):
+        self.assertEqual(sm.progress_line("SteamCMD", 5 * 1024 * 1024, 20 * 1024 * 1024),
+                         "SteamCMD: 25% (5 of 20 MB)")
+        self.assertEqual(sm.progress_line("SteamCMD", 5 * 1024 * 1024, 0), "SteamCMD: 5 MB")
+
+    def test_unity_uses_hubs_own_percentage_when_it_prints_one(self):
+        log = os.path.join(self.tmp, "unity_install.log")
+        write(log, b"Downloading Unity 6000.0.85f1...\nprogress: 12%\nprogress: 47.5%\n")
+        line = sm.unity_progress(log, os.path.join(self.tmp, "Editor"), minutes=12)
+        self.assertIn("47%", line)
+        self.assertIn("12 min", line)
+
+    def test_unity_otherwise_measures_what_is_installed(self):
+        log = os.path.join(self.tmp, "unity_install.log")
+        write(log, b"Downloading Unity 6000.0.85f1...\n")
+        editor = os.path.join(self.tmp, "Editor")
+        write(os.path.join(editor, "a.bin"), b"x" * (2 * 1024 * 1024))
+        line = sm.unity_progress(log, editor, minutes=3, total=8 * 1024 * 1024)
+        self.assertIn("25%", line)
+        self.assertIn("3 min", line)
+
+    def test_unity_never_says_100_before_it_is_done(self):
+        editor = os.path.join(self.tmp, "Editor")
+        write(os.path.join(editor, "a.bin"), b"x" * 100)
+        self.assertIn("99%", sm.unity_progress(None, editor, minutes=1, total=50))
+
+
 class TestSignIn(Base):
     """Unity needs a licence before it builds: ask for the Hub sign-in at the start, not hours later."""
 

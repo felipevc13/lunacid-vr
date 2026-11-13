@@ -60,13 +60,45 @@ def arch():
 
 # ---------- small helpers
 
-def download(url, dest):
-    """Fetch url to dest (a temporary name first, so a cut download never looks finished)."""
+MB = 1024 * 1024
+UNITY_TOTAL = 9 * 1024 * MB    # Unity 6000.0.85f1 with Android, OpenJDK and the SDK/NDK, roughly, installed
+
+
+def progress_line(label, done, total):
+    if total:
+        return "%s: %d%% (%d of %d MB)" % (label, done * 100 // total, done // MB, total // MB)
+    return "%s: %d MB" % (label, done // MB)
+
+
+def _live(line, end=False):
+    """One line that updates in place."""
+    sys.stdout.write("\r" + line + " " * 8 + ("\n" if end else ""))
+    sys.stdout.flush()
+
+
+def download(url, dest, label=None, say=None):
+    """Fetch url to dest (a temporary name first, so a cut download never looks finished), showing how far it is."""
+    label = label or os.path.basename(dest)
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     part = dest + ".part"
     req = urllib.request.Request(url, headers={"User-Agent": "lunacid-vr-setup"})
     with urllib.request.urlopen(req, timeout=120) as resp, open(part, "wb") as fh:
-        shutil.copyfileobj(resp, fh, 1 << 20)
+        total = int(resp.headers.get("Content-Length") or 0)
+        done, shown = 0, -1
+        while True:
+            chunk = resp.read(1 << 20)
+            if not chunk:
+                break
+            fh.write(chunk)
+            done += len(chunk)
+            step = done * 20 // total if total else done // (10 * MB)
+            if step != shown:
+                shown = step
+                (say or _live)(progress_line(label, done, total))
+    if say:
+        say(progress_line(label, done, total or done))
+    else:
+        _live(progress_line(label, done, total or done), end=True)
     os.replace(part, dest)
 
 
@@ -272,6 +304,40 @@ def install_dotnet(tools, system, fetch=download, runner=run, which=shutil.which
 
 # ---------- Unity
 
+def folder_size(path):
+    total = 0
+    for top, _, files in os.walk(path):
+        for f in files:
+            try:
+                total += os.path.getsize(os.path.join(top, f))
+            except OSError:
+                pass
+    return total
+
+
+def unity_progress(log, editor, minutes, total=UNITY_TOTAL):
+    """How far Unity's install is: Unity Hub's own percentage when its output has one, else what is installed so far
+    against the usual size (never 100% before it is done)."""
+    if log and os.path.exists(log):
+        with open(log, encoding="utf-8", errors="replace") as fh:
+            found = re.findall(r"(\d{1,3})(?:\.\d+)?\s*%", fh.read()[-4000:])
+        if found:
+            return "Unity: %s%% (%d min)" % (found[-1], minutes)
+    size = folder_size(editor) if editor and os.path.isdir(editor) else 0
+    pct = min(99, size * 100 // total) if total else 0
+    return "Unity: %.1f GB of about %.0f GB (%d%%), %d min" % (size / 1024.0 / MB, total / 1024.0 / MB, pct, minutes)
+
+
+def editor_folder(unity, system):
+    """...\\6000.0.85f1\\Editor\\Unity.exe or .../6000.0.85f1/Unity.app/Contents/MacOS/Unity -> the 6000.0.85f1 folder."""
+    if not unity:
+        return None
+    up = 2 if system == "Windows" else 4
+    for _ in range(up):
+        unity = os.path.dirname(unity)
+    return unity
+
+
 def unity_command(hub, editor, android):
     """The Unity Hub command line that gets 6000.0.85f1 with Android and its children, or None when present."""
     if editor and android:
@@ -446,9 +512,12 @@ def setup(cfg, profile, local_path, system=None, cpu=None, say=print, ask=input)
 
     if unity_proc:
         say("\nwaiting for Unity to finish downloading and installing...")
+        began = time.time()
+        editor = editor_folder(cfg.get("unity"), system)
         while unity_proc.poll() is None:
-            time.sleep(30)
-            say("  still installing Unity...")
+            time.sleep(15)
+            _live(unity_progress(log, editor, int((time.time() - began) / 60)))
+        _live("Unity: done", end=True)
         if unity_proc.returncode != 0:
             raise Problem("Unity Hub could not install Unity %s (exit code %s): see %s. Open Unity Hub, sign in, and "
                           "run setup again." % (UNITY_VERSION, unity_proc.returncode, log))
