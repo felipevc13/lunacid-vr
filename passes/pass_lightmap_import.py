@@ -9,7 +9,7 @@ Marking the files with their lightmap texture types makes Unity encode them for 
 
 The directional maps (_comp_dir) come out of AssetRipper converted from sRGB to linear, as if they
 were colours: the neutral direction 0.5 reads 0.21, which darkened walls and lit floors wrongly.
-Their RGB is re-encoded to sRGB (alpha untouched) with ffmpeg, once; a marker in the .meta
+Their RGB is re-encoded to sRGB (alpha untouched) once (core/exr.py, no ffmpeg); a marker in the .meta
 userData records it. The colour maps are darkened the same way, so when the profile names a
 "lightmap_dump_dir" (EXRs the original game decoded on the GPU, tools/lightmap_dump) its
 <scene>/Lightmap-N_comp_*.exr files replace AssetRipper's and no re-encoding is needed.
@@ -29,9 +29,11 @@ import os
 import re
 import shutil
 import struct
-import subprocess
-import tempfile
+import sys
 import zlib
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core import exr as exr_io  # noqa: E402
 
 # Lightmap-N_comp_<kind>.exr -> TextureImporter textureType
 TYPES = {"light": 6, "dir": 0, "shadowmask": 11}
@@ -70,15 +72,8 @@ def _dir_to_png(meta, converted=None):
     return png + ".meta"
 
 def _read_exr(exr):
-    """(width, height, [g, b, r, a] float planes) of an EXR, via ffmpeg (no conversion)."""
-    probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=width,height",
-                            "-of", "csv=p=0", exr], capture_output=True, text=True, check=True)
-    w, h = (int(v) for v in probe.stdout.strip().split(","))
-    raw = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-i", exr, "-f", "rawvideo",
-                          "-pix_fmt", "gbrapf32le", "-"], capture_output=True, check=True).stdout
-    n = w * h
-    vals = struct.unpack("<%df" % (4 * n), raw)
-    return w, h, [vals[i * n:(i + 1) * n] for i in range(4)]
+    """(width, height, [g, b, r, a] float planes) of an EXR (core/exr.py: plain Python, nothing to install)."""
+    return exr_io.read_gbra(exr)
 
 def _wrong(meta, wanted):
     with open(meta, encoding="utf-8", errors="ignore") as f:
@@ -99,25 +94,10 @@ def _to_srgb(x):
     return 1.055 * x ** (1 / 2.4) - 0.055
 
 def _restore_dir_gamma(exr):
-    """Re-encode the RGB planes of a float EXR from linear to sRGB with ffmpeg; alpha stays."""
-    probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=width,height",
-                            "-of", "csv=p=0", exr], capture_output=True, text=True, check=True)
-    w, h = (int(v) for v in probe.stdout.strip().split(","))
-    raw = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-i", exr, "-f", "rawvideo",
-                          "-pix_fmt", "gbrapf32le", "-"], capture_output=True, check=True).stdout
-    n = w * h
-    vals = list(struct.unpack("<%df" % (4 * n), raw))
-    for i in range(3 * n):  # planes g, b, r, then a
-        vals[i] = _to_srgb(vals[i])
-    with tempfile.TemporaryDirectory() as tmp:
-        src = os.path.join(tmp, "dir.raw")
-        out = os.path.join(tmp, "dir.exr")
-        with open(src, "wb") as f:
-            f.write(struct.pack("<%df" % (4 * n), *vals))
-        subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "gbrapf32le",
-                        "-s", f"{w}x{h}", "-i", src, "-c:v", "exr", "-format", "2", "-compression", "3",
-                        "-frames:v", "1", out], check=True)
-        shutil.copyfile(out, exr)
+    """Re-encode the RGB planes of a float EXR from linear to sRGB; alpha stays."""
+    w, h, planes = exr_io.read_gbra(exr)
+    planes = [[_to_srgb(v) for v in p] for p in planes[:3]] + [planes[3]]
+    exr_io.write_gbra(exr, w, h, planes)
 
 FORMULA_MARK = "lunaport-lightmap-formula"
 
@@ -126,36 +106,22 @@ def convert_by_formula(exr, kind):
     linear_to_srgb(RGB) / alpha, alpha kept; shadowmask unchanged."""
     if kind not in ("light", "dir"):
         return
-    probe = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=width,height",
-                            "-of", "csv=p=0", exr], capture_output=True, text=True, check=True)
-    w, h = (int(v) for v in probe.stdout.strip().split(","))
-    raw = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-i", exr, "-f", "rawvideo",
-                          "-pix_fmt", "gbrapf32le", "-"], capture_output=True, check=True).stdout
+    w, h, planes = exr_io.read_gbra(exr)
     n = w * h
-    vals = list(struct.unpack("<%df" % (4 * n), raw))
-    alpha = vals[3 * n:]
+    alpha = planes[3]
+    out = []
     for p in range(3):  # planes g, b, r, then a
-        base = p * n
-        for i in range(n):
-            v = _to_srgb(vals[base + i])
-            if kind == "dir":
-                a = alpha[i]
-                v = v / a if a > 1e-4 else v
-            vals[base + i] = v
-    planes = (w, h, [vals[i * n:(i + 1) * n] for i in range(4)])
+        plane = [_to_srgb(v) for v in planes[p]]
+        if kind == "dir":
+            plane = [v / a if a > 1e-4 else v for v, a in zip(plane, alpha)]
+        out.append(plane)
+    planes = (w, h, out + [list(alpha)])
     if kind == "dir":
-        # Not written back as EXR: ffmpeg's EXR encoder multiplies RGB by alpha (measured: 0.6353 written,
-        # 0.5283 = 0.6353 x 0.8315 read back). The direction map becomes a PNG from these planes instead.
+        # The direction map becomes a PNG from these planes (written as EXR, RGB would be premultiplied by alpha
+        # by some encoders: ffmpeg's measured 0.6353 written, 0.5283 = 0.6353 x 0.8315 read back).
         return planes
-    with tempfile.TemporaryDirectory() as tmp:
-        src = os.path.join(tmp, "map.raw")
-        out = os.path.join(tmp, "map.exr")
-        with open(src, "wb") as f:
-            f.write(struct.pack("<%df" % (4 * n), *vals))
-        subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "gbrapf32le",
-                        "-s", f"{w}x{h}", "-i", src, "-c:v", "exr", "-format", "2", "-compression", "3",
-                        "-frames:v", "1", out], check=True)
-        shutil.copyfile(out, exr)
+    exr_io.write_gbra(exr, w, h, planes[2])
+    assert n == len(out[0])
     return planes
 
 def _kind(meta):

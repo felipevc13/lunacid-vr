@@ -188,3 +188,38 @@ class BuildWatcher:
         if self.phase == "gradle":
             return w["gradle"] % minutes
         return w["start"] % minutes
+
+
+# ---------- errors as sentences
+
+def friendly(main, log_dir=None, lang=None, step=None):
+    """Run a tool's main(): an unexpected error prints one sentence (what failed, where the details are, run the
+    same command again) and writes the traceback to <log_dir>/error_<time>.log. Planned exits pass through."""
+    import datetime
+    import traceback
+    try:
+        return main()
+    except (SystemExit, KeyboardInterrupt):
+        raise
+    except Exception as e:  # noqa: BLE001: the person needs a sentence; the details go to a file
+        lang = lang or language()
+        if not log_dir:
+            try:
+                sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                from core import config
+                log_dir = os.path.join(config.load()["work"], "logs")
+            except Exception:
+                log_dir = os.path.join(os.path.expanduser("~"), "lunacid-work", "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        path = os.path.join(log_dir, "error_%s.log" % datetime.datetime.now().strftime("%Y%m%d_%H%M%S"))
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(traceback.format_exc())
+        what = step or os.path.basename(sys.argv[0] or "the tool")
+        if lang == "pt":
+            msg = ("\nAlgo inesperado aconteceu em %s: %s\nDetalhes em: %s\nRode o mesmo comando de novo; se "
+                   "acontecer de novo, envie esse arquivo junto com a sua pergunta." % (what, e, path))
+        else:
+            msg = ("\nSomething unexpected happened in %s: %s\nDetails in: %s\nRun the same command again; if it "
+                   "happens again, send that file with your question." % (what, e, path))
+        print(msg)
+        sys.exit(1)

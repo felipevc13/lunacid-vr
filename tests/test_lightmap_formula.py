@@ -106,5 +106,25 @@ class TestLightmapFormula(unittest.TestCase):
         self.assertLess(err / c, 0.004, "dir PNG: %.5f" % (err / c))
 
 
+class TestNoExternalProgram(unittest.TestCase):
+    """2026-11-13: on a fresh Windows the pass died calling ffprobe. It must not start any program."""
+
+    def test_formula_runs_without_starting_a_program(self):
+        import tempfile
+        from unittest import mock
+        sys.path.insert(0, REPO)
+        from core import exr
+        import passes.pass_lightmap_import as lp
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "Lightmap-0_comp_light.exr")
+            planes = [[0.25] * 16, [0.5] * 16, [1.0] * 16, [1.0] * 16]
+            exr.write_gbra(path, 4, 4, planes)
+            with mock.patch("subprocess.run", side_effect=AssertionError("a program was started")), \
+                    mock.patch("subprocess.Popen", side_effect=AssertionError("a program was started")):
+                lp.convert_by_formula(path, "light")
+            _, _, back = exr.read_gbra(path)
+            self.assertAlmostEqual(back[0][0], lp._to_srgb(0.25), places=5)
+
+
 if __name__ == "__main__":
     unittest.main()

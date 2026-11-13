@@ -160,6 +160,38 @@ class TestRealBuildLog(unittest.TestCase):
         self.assertLess(seen.index("pack"), seen.index("gradle"))
 
 
+class TestFriendlyErrors(unittest.TestCase):
+    """2026-11-13: the build died inside pass_lightmap_import and the person saw a Python traceback. Every tool
+    run on its own (build, extraction, shaders) turns an unexpected error into a sentence and a log file."""
+
+    def test_a_crash_is_a_sentence_and_a_log(self):
+        import contextlib
+        import io
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, tmp)
+
+        def main():
+            raise FileNotFoundError("[WinError 2] O sistema não pode encontrar o arquivo especificado")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out), self.assertRaises(SystemExit) as ctx:
+            progress.friendly(main, log_dir=tmp, lang="en", step="the build")
+        self.assertEqual(ctx.exception.code, 1)
+        text = out.getvalue()
+        self.assertNotIn("Traceback", text)
+        self.assertIn("WinError 2", text)
+        self.assertIn("the build", text)
+        logs = os.listdir(tmp)
+        self.assertEqual(len(logs), 1)
+        with open(os.path.join(tmp, logs[0]), encoding="utf-8") as fh:
+            self.assertIn("Traceback", fh.read())
+
+    def test_a_planned_exit_passes_through(self):
+        with self.assertRaises(SystemExit) as ctx:
+            progress.friendly(lambda: __import__("sys").exit("FAIL: no APK"), log_dir="/nonexistent", lang="en")
+        self.assertEqual(ctx.exception.code, "FAIL: no APK")
+
+
 class TestTimeLeftLivesHere(unittest.TestCase):
     def test_shared(self):
         self.assertEqual(progress.time_left(0.25, 60), "about 3 min left")
