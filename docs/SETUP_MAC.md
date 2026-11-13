@@ -76,6 +76,15 @@ mkdir -p ~/steamcmd && cd ~/steamcmd && curl -sqL https://steamcdn-a.akamaihd.ne
 
 **Check:** `ls ~/steamcmd/steamcmd.sh` prints the path back.
 
+**Let SteamCMD update itself, alone, before using it.** The first run downloads its own update and applies it:
+
+```
+~/steamcmd/steamcmd.sh +quit
+```
+
+Wait until the prompt comes back. **Check:** the last lines have no `Fatal Error`. If they do, run the same command
+again; it often works the second time.
+
 ## 2. Download this project
 
 ```
@@ -99,7 +108,7 @@ with `~/steamcmd/steamcmd.sh`, the full path, not just `steamcmd`**: plain `stea
 ~/steamcmd/steamcmd.sh +@sSteamCmdForcePlatformType windows +login <your Steam user> +download_depot 1745510 1745511 9110162109347716163 +quit
 ```
 
-- The first time, SteamCMD updates itself and prints many lines. Wait.
+- SteamCMD checks for updates again and prints a few lines. Wait.
 - It asks for your **password**. Type it and press Return. **Nothing appears while you type: that is normal.**
 - It asks for your **Steam Guard code** (from the Steam app on your phone, or your email). Type it, press Return.
 - **These tools never see your password.** You type it into SteamCMD, Valve's program.

@@ -71,6 +71,16 @@ SteamCMD is Valve's own download tool. It is not installed like the others: it i
 1. Download <https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip>.
 2. Make a folder `C:\steamcmd` and extract the zip into it (right click, **Extract All…**).
 3. **Check:** `Test-Path C:\steamcmd\steamcmd.exe` prints `True`.
+4. **Let SteamCMD update itself, alone, before using it.** The first run downloads its own update (about 43 MB)
+   and applies it. Run:
+
+   ```
+   C:\steamcmd\steamcmd.exe +quit
+   ```
+
+   Wait until the terminal shows the prompt (`PS C:\...>`) again. **Check:** the last lines have no
+   `Fatal Error`. If they say `Failed to apply update` or `Fatal Error: Failed to load steam.dll`, run the same
+   command again; it often works the second time. If it keeps failing, see "When something goes wrong" below.
 
 ## 2. Download this project
 
@@ -98,7 +108,7 @@ so plain `steamcmd` says `is not recognized`.
 C:\steamcmd\steamcmd.exe +@sSteamCmdForcePlatformType windows +login <your Steam user> +download_depot 1745510 1745511 9110162109347716163 +quit
 ```
 
-- The first time, SteamCMD updates itself and prints many lines. Wait.
+- SteamCMD checks for updates again and prints a few lines. Wait.
 - It asks for your **password**. Type it and press Enter. **Nothing appears while you type: that is normal.**
 - It asks for your **Steam Guard code** (from the Steam app on your phone, or your email). Type it, press Enter.
 - **These tools never see your password.** You type it into SteamCMD, Valve's program.
@@ -191,5 +201,16 @@ without a terminal: in the headset, **Library**, find Lunacid VR, the **three do
 
 - **`is not recognized` / `não é reconhecido`:** close the terminal (or VS Code) and open it again. If it still
   fails, the program in that step did not finish installing: run its installer again.
+- **SteamCMD says `Failed to apply update` or `Fatal Error: Failed to load steam.dll`:** its own update did not
+  finish. Run `C:\steamcmd\steamcmd.exe +quit` again. If it keeps failing, empty the folder except the program
+  and try once more:
+
+  ```
+  Get-ChildItem C:\steamcmd -Exclude steamcmd.exe | Remove-Item -Recurse -Force
+  C:\steamcmd\steamcmd.exe +quit
+  ```
+
+  If it still fails, Windows Security may be blocking it (look for a "blocked" notice): open **Terminal** from the
+  Start menu with right click, **Run as administrator**, and run those two commands there.
 - **Anything else:** copy the whole message from the terminal (select it, right click) and send it with your
   question. The `doctor` output helps too.
