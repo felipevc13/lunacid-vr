@@ -101,6 +101,25 @@ To bring saves from another computer, copy its backup folder (`<work>/backups/<d
 `<work>/backups/` on this one, then restore. `restore` only copies saves, so any computer can restore onto any
 install.
 
+## Uninstall
+
+**Back up first** if you want to keep playing later: `python3 lunacid_vr.py backup`, then copy `<work>/backups/` and
+`<work>/keystore` somewhere off this computer. Then remove what the install added:
+
+1. **The game on the Quest:** in the headset, **Library**, the **three dots** next to Lunacid VR, **Uninstall**.
+   This deletes its saves too.
+2. **The work folder** (the extracted game, the Unity project, the builds, the backups and the signing key):
+   `lunacid-work` in your home folder (Windows: `C:\Users\<you>\lunacid-work`; Mac: `~/lunacid-work`).
+3. **This repository:** `lunacid-vr` in your home folder.
+4. **SteamCMD:** on Windows `C:\steamcmd` (if you had it before, keep it); on a Mac it is inside the work folder, or `~/steamcmd` if you had it there before.
+5. **Unity:** open Unity Hub, **Installs**, the gear next to 6000.0.85f1, **Uninstall**. Then uninstall Unity Hub
+   itself (Windows: **Settings, Apps**; Mac: drag it from Applications to the Trash).
+6. **adb's key for your Quest:** the folder `.android` in your home folder. The Quest asks to allow USB debugging
+   again next time.
+7. **Git and Python**, only if nothing else on your computer uses them (Windows: **Settings, Apps**).
+
+Uninstalling does not touch your Steam account or your copy of Lunacid.
+
 ## Commands
 
 | Command | What it does |

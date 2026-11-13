@@ -598,10 +598,17 @@ TEXT = {
         "step2_fast": "Step 2 of 3: updating the game to the new version. About 25 to 45 minutes. Keep the computer "
                       "plugged in and awake.",
         "step3": "Step 3 of 3: putting the game on the Quest.",
-        "plug": "Connect the Quest to this computer with its USB-C cable and put it on. If it asks to Allow USB "
-                "debugging, tick Always allow and choose Allow. Then press Enter here...",
-        "waiting": "Still no Quest. Check the cable (the one that came with the Quest carries data), that developer "
-                   "mode is on in the Meta Horizon app, and the Allow USB debugging window in the headset.",
+        "plug": "Put the Quest headset on and wait for its home screen. Then, still wearing it, connect its USB-C "
+                "cable to this computer. It will ask to Allow USB debugging: choose Allow. Waiting for the Quest...",
+        "allow": "The Quest is asking whether to allow this computer. In the headset, tick Always allow and choose "
+                 "Allow. Look around if the window is not in front of you.",
+        "reasking": "No answer yet: asking the Quest again, so the window opens in front of you...",
+        "waiting": "Still no Quest. Check the cable (the one that came with the Quest carries data), and that developer "
+                   "mode is on in the Meta Horizon app.",
+        "unauthorized": "The Quest is waiting for you to allow this computer, but its window opened where you were not "
+                        "looking. Unplug the cable, put the headset on and wait for the home screen, then plug the "
+                        "cable back in while wearing it. Choose Allow (tick Always allow). If it still does not show, "
+                        "restart the Quest and try again.",
         "restore_q": "There are saves from an earlier backup on this computer. Put them on the Quest? [Y/n] ",
         "open_once": "In the headset, open Lunacid VR once (Library, Unknown sources), wait for the menu, quit it, "
                      "then press Enter here...",
@@ -618,6 +625,44 @@ def language(env=None, system_locale=None):
     """Always English (core/progress.py)."""
     from core import progress
     return progress.language(env, system_locale)
+
+
+def connect_quest(steps, t, poll=2, wait_allow=30, reasks=3, limit=900):
+    """Wait for the Quest, watching the cable by itself (no Enter to press). On the Windows notebook (2026-11-13)
+    adb said "unauthorized" and nothing showed: the Quest opens its Allow USB debugging window where the headset
+    faces the moment the cable goes in, and ignores new requests while that one is pending. So: headset on first;
+    when it stays unauthorized, ask the Quest again (up to `reasks` times, the headset now on); then the steps by
+    hand. False after `limit` seconds with no Quest."""
+    say = steps.say
+    say(t["plug"])
+    elapsed, unauthorized_for, asked_again, last_waiting = 0, 0, 0, 0
+    told_allow = told_manual = False
+    while elapsed < limit:
+        state = steps.quest()
+        if state is True or state == "device":
+            return True
+        if state == "unauthorized":
+            if not told_allow:
+                say(t["allow"])
+                told_allow = True
+            unauthorized_for += poll
+            if unauthorized_for >= wait_allow:
+                if asked_again < reasks:
+                    say(t["reasking"])
+                    steps.reask()
+                    asked_again += 1
+                    unauthorized_for = 0
+                elif not told_manual:
+                    say(t["unauthorized"])
+                    told_manual = True
+        else:
+            unauthorized_for = 0
+            if elapsed - last_waiting >= 60:
+                say(t["waiting"])
+                last_waiting = elapsed
+        steps.sleep(poll)
+        elapsed += poll
+    return False
 
 
 def start(steps, lang="en", tries=30, log_dir=None):
@@ -660,13 +705,7 @@ def _start(steps, t, tries):
             return 1
     say("")
     say(t["step3"])
-    ask(t["plug"])
-    for _ in range(tries):
-        if steps.quest():
-            break
-        say(t["waiting"])
-        ask(t["plug"])
-    else:
+    if not connect_quest(steps, t):
         say(t["failed"])
         return 1
     fresh = not steps.installed_before()
@@ -727,12 +766,32 @@ class RealSteps:
         return Device(run, serial=pick_serial(run))
 
     def quest(self):
-        try:
-            dev = self._device()
-            dev.require()
-            return True
-        except Problem:
-            return False
+        """"device", "unauthorized" (the Quest is waiting for its Allow USB debugging answer) or "none"."""
+        cfg = self.cfg()
+        adb = adb_path(cfg)
+        if not adb:
+            return "none"
+        rc, out = adb_runner(adb)(["devices"])
+        states = [line.split()[1] for line in out.splitlines()[1:] if len(line.split()) >= 2]
+        if "device" in states:
+            try:
+                self._device().require()
+                return "device"
+            except Problem:
+                return "none"
+        return "unauthorized" if "unauthorized" in states else "none"
+
+    def sleep(self, seconds):
+        import time
+        time.sleep(seconds)
+
+    def reask(self):
+        """Drop and redo the connection from this computer: the Quest asks again, where the headset faces now."""
+        adb = adb_path(self.cfg())
+        if adb:
+            run = adb_runner(adb)
+            run(["reconnect", "offline"])     # adb: "reset offline/unauthorized devices to force reconnect"
+            run(["devices"])
 
     def installed_before(self):
         rc, out = self._device().shell("pm path %s" % PKG)

@@ -44,8 +44,11 @@ In this order. Each one is shown in the window when it is needed:
    asks for your **password** and your **Steam Guard code**. Nothing appears while you type the password: that is
    normal. This project never sees your password.
 4. **The build:** about **1 to 2 hours** the first time. Keep the Mac plugged in.
-5. **Connect the Quest** with the cable and put it on. A window asks to **Allow USB debugging**: tick **Always
-   allow from this computer** and choose **Allow**. Then press **Return** on the Mac.
+5. **The Quest:** put the headset on and wait for its home screen. Then, **still wearing it**, connect the cable
+   to the computer. A window asks to **Allow USB debugging**: tick **Always allow from this computer** and choose
+   **Allow** (look around if you do not see it in front of you). Then press **Return** on the computer. The order
+   matters: the Quest opens that window where the headset is facing the moment the cable goes in, so with the
+   headset on a table nobody sees it.
 6. If you had saves from an earlier install on this Mac, it offers to put them back.
 
 When it says **Done**, the game is in the headset: **Library**, the filter at the top, **Unknown sources**,
@@ -61,6 +64,9 @@ first time.
 ## If something goes wrong
 
 - **Run the same line again.** Finished steps are skipped, and it carries on from where it stopped.
+- **It says the Quest is waiting for you to allow this computer, but no window shows:** unplug the cable, put the
+  headset on, wait for the home screen, and plug the cable back in while wearing it. If it still does not show,
+  restart the Quest (hold its power button, Restart) and do the same.
 - **Anything else:** copy the whole message from Terminal and send it with your question.
 
 Prefer to see every piece, or the automatic way fails? [Doing it by hand](BY_HAND_MAC.md).

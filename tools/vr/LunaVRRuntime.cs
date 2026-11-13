@@ -1399,7 +1399,13 @@ public class LunaVRGameplay : MonoBehaviour
     void PointAtMenus()
     {
         var head = HeadTracker();
-        bool menu = player != null && head != null && FreezeField != null && (bool)FreezeField.GetValue(player)
+        // A level loading (quit to title, warp map) has nothing to click: the player stays frozen with the HUD active,
+        // and the lilac laser dot stayed alone on the loading screen (Felipe, notebook build, 2026-11-13; LESSONS 40).
+        // Checked every frame: a check five times a second left the laser on for a moment after YES (Felipe's Quest).
+        bool loading = LevelLoading();
+        if (loading) HideCursorsWhileLoading();
+        UnstickCursorGlide();
+        bool menu = !loading && player != null && head != null && FreezeField != null && (bool)FreezeField.GetValue(player)
                     && huds.Exists(h => h != null && h.gameObject.activeInHierarchy);
         if (!menu)
         {
@@ -1423,6 +1429,60 @@ public class LunaVRGameplay : MonoBehaviour
     // On the PC the level-load fade covers the whole screen, menus included. Here the fade is on the view layer
     // and the panel stays in front of it, so LOADING appeared over the warp map's buttons (Felipe). A loading
     // level always ends in a new scene, so the open menus simply stop drawing and catching the laser.
+    // The scene's loading effects (Menus.ITEMS[20], [40], the warp map's), found once per scene, read every frame.
+    readonly List<Behaviour> levelLoads = new List<Behaviour>();
+    UnityEngine.SceneManagement.Scene levelLoadsScene;
+
+    bool LevelLoading()
+    {
+        if (LevelLoadType == null) return false;
+        var scene = SceneManager.GetActiveScene();
+        if (scene != levelLoadsScene || levelLoads.Exists(l => l == null))
+        {
+            levelLoadsScene = scene;
+            levelLoads.Clear();
+            foreach (var o in Resources.FindObjectsOfTypeAll(LevelLoadType))
+                if (o is Behaviour b && b.gameObject.scene.IsValid()) levelLoads.Add(b);
+        }
+        foreach (var l in levelLoads) if (l.isActiveAndEnabled) return true;
+        return false;
+    }
+
+    // The game's selection cursor stays on the HUD while a level loads: hidden until the new scene.
+    void HideCursorsWhileLoading()
+    {
+        if (selectCursors.Count == 0 || selectCursors.Exists(c => c == null))
+        {
+            selectCursors.Clear();
+            foreach (var h in huds)
+                if (h != null) selectCursors.AddRange(h.GetComponentsInChildren<UnityEngine.UI.Image>(true).Where(i => i.name == "SELECT"));
+        }
+        foreach (var c in selectCursors) if (c.enabled) c.enabled = false;
+    }
+
+    // The cursor glides to a new selection in Menus.SEL_BOUNCE (5 steps of 25 ms), guarded by SEL_BB. When the HUD goes
+    // inactive mid-glide the coroutine dies with SEL_BB still true and the cursor never moves again in that scene: on the
+    // first launch it stayed under SETTINGS with YES selected, a ghost from screen to screen (Felipe, 2026-11-13; LESSONS 41).
+    // Looked up on first use: MenusType is declared further down, and static fields initialise in file order.
+    static System.Reflection.FieldInfo glideFlag;
+    static System.Reflection.FieldInfo GlideFlag => glideFlag ?? (glideFlag = MenusType?.GetField("SEL_BB", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic));
+    float glideSince = -1f;
+    Component glideMenus;
+
+    void UnstickCursorGlide()
+    {
+        if (GlideFlag == null) return;
+        // Its own reference: RelabelTurnSettings prepares the settings page when its `menus` is first found in a scene,
+        // and filling that one here skipped the preparation (hidden rows shown, VR reset lost; caught by `final`).
+        if (glideMenus == null) glideMenus = (Component)FindObjectOfType(MenusType);
+        if (glideMenus == null || Time.timeScale <= 0f) { glideSince = -1f; return; }
+        if (!(bool)GlideFlag.GetValue(glideMenus)) { glideSince = -1f; return; }
+        if (glideSince < 0f) { glideSince = Time.unscaledTime; return; }
+        if (Time.unscaledTime - glideSince < 0.5f) return;
+        GlideFlag.SetValue(glideMenus, false); // the game's Update starts a new glide to the selection
+        glideSince = -1f;
+        Debug.Log("LUNA_INPUT cursor glide was cut: restarted");
+    }
     static readonly System.Type LevelLoadType = System.Type.GetType("Level_Load_Effect, Assembly-CSharp");
     static readonly string[] MenuPanels = { "HUD/CRYSTAL", "HUD/MAIN", "HUD/MERCHANT", "HUD/QUERY" };
 
@@ -2476,7 +2536,7 @@ public class LunaHeadTracker : MonoBehaviour
     // level). The game writes the rotation again each frame it animates it: a rotation that is not the
     // one written here last is the game's new aim.
     static readonly System.Type PlayerType = System.Type.GetType("Player_Control_scr, Assembly-CSharp");
-    bool sceneCamera, written;
+    bool sceneCamera, written, recentreOnFirstPose;
     public bool SceneCamera => sceneCamera;
     Quaternion aimYaw = Quaternion.identity, lastWritten;
 
@@ -2488,12 +2548,35 @@ public class LunaHeadTracker : MonoBehaviour
             hasBase = true;
             sceneCamera = PlayerType != null && GetComponentInParent(PlayerType) == null;
         }
+        // The new game's opening is shown from the headset's forward, which is wherever the headset faced when the game
+        // started: the hand appeared to the side, differently on each launch (Felipe). Its camera comes on with the
+        // screen still black, and the recentre is applied before its first frame is drawn, so nothing is seen to turn.
+        // Only for that moment: a request left pending without a head pose (the editor) fired much later, in another
+        // scene, and turned every spell 45 degrees in the probe (`final`, spell.grid).
+        if (sceneCamera && transform.parent != null && transform.parent.name == "Opening") recentreOnFirstPose = true;
         Application.onBeforeRender += Apply;
+    }
+
+    // The game also places a scene camera: SCENE_C.anim holds FIRST_SCENE at (-1.41, 1.56, -1.08) for the whole
+    // opening. basePosition is read in OnEnable, before the animation first writes, so the view stayed at the scene
+    // file's position, from where the hand is 46 degrees to the side (Felipe: "always somewhat to the side";
+    // LESSONS 42). A position that is not the one written here last is the game's: it becomes the base.
+    Vector3 lastWrittenPosition;
+    bool positionWritten;
+
+    void TakeGamePlace()
+    {
+        if (!sceneCamera) return;
+        var current = transform.localPosition;
+        if (positionWritten && (current - lastWrittenPosition).sqrMagnitude < 1e-8f) return;
+        if ((current - basePosition).sqrMagnitude > 1e-6f) Debug.Log("LUNA_VR " + name + " placed by the game: " + current.ToString("F2"));
+        basePosition = current;
     }
 
     void TakeGameAim()
     {
         if (!sceneCamera) return;
+        TakeGamePlace();
         var current = transform.localRotation;
         if (written && Quaternion.Angle(current, lastWritten) < 0.01f) return;
         float yaw = current.eulerAngles.y;
@@ -2538,8 +2621,10 @@ public class LunaHeadTracker : MonoBehaviour
             // Without a headset (the editor) the read fails and r is all zeros, which Unity turned into
             // "look straight ahead" every frame: only a real rotation is written.
             if (hasRotation) Write(aimYaw * yawOffset * r);
+            recentreOnFirstPose = false;
             return;
         }
+        if (recentreOnFirstPose) { recentreOnFirstPose = false; recentrePending = true; }
         if (recentrePending)
         {
             recentrePending = false;
@@ -2549,6 +2634,8 @@ public class LunaHeadTracker : MonoBehaviour
         }
         Write(aimYaw * yawOffset * r);
         transform.localPosition = basePosition + aimYaw * yawOffset * (p - positionOffset);
+        lastWrittenPosition = transform.localPosition;
+        positionWritten = true;
     }
 
     void Write(Quaternion rotation)

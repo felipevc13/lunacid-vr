@@ -90,7 +90,7 @@ public class LunaProbe : MonoBehaviour
 
     static readonly int[] FrameRates = { 72, 45, 90, 60 };
     static readonly string[] Core = { "Menu", "Spawns", "Walk", "Run", "JumpAndFall", "FallSpawns", "SelectCursor", "Buttons", "AllMenus", "Options", "TouchMapping", "SpellAim", "TheaterLaser", "HandsAtHead",
-                                      "Teleports", "TowerTeleport", "Ladder", "Elevator", "BoatRide", "PickupIcon", "PopLayout", "WarpLoading", "MenuFieldOfView", "SaveLoad", "Death", "HeadRelativeMove" };
+                                      "Teleports", "TowerTeleport", "Ladder", "Elevator", "BoatRide", "PickupIcon", "PopLayout", "WarpLoading", "QuitToTitle", "FirstLaunch", "CursorGlideCut", "OpeningFacing", "MenuFieldOfView", "SaveLoad", "Death", "HeadRelativeMove" };
 
     IEnumerator Start()
     {
@@ -675,6 +675,68 @@ public class LunaProbe : MonoBehaviour
     // Felipe (Build 91 video): after a new game the sword floated above the HUD. The port puts HANDS at the head plus
     // the game's HAND_offset; the game sets that offset in Start from where HANDS and HEAD stand (the opening moves
     // them), and Head_Bob used to pull it back to zero every physics step. With Head_Bob off it stayed.
+    // The new game's opening (the hand out of the ground, PITT_A1/Opening). Felipe (2026-11-13): in the headset the hand is
+    // always somewhat to the side, and differently on the first launch and after a restart. The opening's camera turns
+    // from the headset's forward, which is wherever the headset faced when the game started. With the head turned 0, 40
+    // and -90 degrees from that forward: from the first frame that is not black the hand must be ahead (under 6 degrees),
+    // the view must not turn by itself (the head holds still), and no frame may stall (LESSONS 42).
+    IEnumerator OpeningFacing()
+    {
+        var frames = System.Environment.GetEnvironmentVariable("LUNA_PROBE_FRAMES");
+        foreach (float headYaw in new[] { 0f, 40f, -90f })
+        {
+            // The headset position counts from where it was when the game started (Device origin): about zero.
+            var pose = (Quaternion.Euler(0f, headYaw, 0f), Vector3.zero);
+            LunaHeadTracker.TestPose = () => pose;
+            Hold_Data.HD = Data(SavePos);
+            SceneManager.LoadScene("PITT_A1");
+            yield return WaitFrames(3);
+            var opening = Resources.FindObjectsOfTypeAll<Transform>().FirstOrDefault(t => t.name == "Opening" && t.gameObject.scene.IsValid());
+            if (opening == null) { Check("opening.found", false); yield break; }
+            string dir = string.IsNullOrEmpty(frames) ? null : System.IO.Path.Combine(frames, "head" + headYaw.ToString("F0"));
+            if (dir != null) System.IO.Directory.CreateDirectory(dir);
+            float worstYaw = 0f, worstTurn = 0f, firstShown = -1f, lastViewYaw = float.NaN;
+            var frameMs = new System.Collections.Generic.List<float>();
+            int frame = 0, shown = 0;
+            float end = Time.time + 8f, last = Time.realtimeSinceStartup;
+            while (Time.time < end && opening != null && opening.gameObject.activeInHierarchy)
+            {
+                yield return null;
+                frame++;
+                float now = Time.realtimeSinceStartup; frameMs.Add((now - last) * 1000f); last = now;
+                if (opening == null || !opening.gameObject.activeInHierarchy) break;
+                if (dir != null && frame % 3 == 0) ShotHud(System.IO.Path.Combine(dir, (frame / 3).ToString("D4") + ".png"), true);
+                var view = opening.GetComponentsInChildren<Camera>().FirstOrDefault(c => c.isActiveAndEnabled);
+                // The hand alone; every frame from the one the opening's camera draws first (stricter than from the fade).
+                var hand = opening.GetComponentsInChildren<Renderer>().FirstOrDefault(r => r.name == "HAND");
+                if (view == null || hand == null) continue;
+                Vector3 to = hand.bounds.center - view.transform.position, fwd = view.transform.forward;
+                shown++;
+                if (firstShown < 0f) firstShown = Time.timeSinceLevelLoad;
+                float yaw = Vector3.SignedAngle(Vector3.ProjectOnPlane(fwd, Vector3.up), Vector3.ProjectOnPlane(to, Vector3.up), Vector3.up);
+                if (Mathf.Abs(yaw) > Mathf.Abs(worstYaw)) worstYaw = yaw;
+                float viewYaw = view.transform.eulerAngles.y;
+                if (!float.IsNaN(lastViewYaw)) worstTurn = Mathf.Max(worstTurn, Mathf.Abs(Mathf.DeltaAngle(lastViewYaw, viewYaw)));
+                lastViewYaw = viewYaw;
+                if (frame % 72 == 0) Log("OPENING head=" + headYaw + " t=" + Time.timeSinceLevelLoad.ToString("F1") + " hand yaw from view=" + yaw.ToString("F1") + " view yaw=" + viewYaw.ToString("F1"));
+            }
+            frameMs.Sort();
+            float median = frameMs.Count > 0 ? frameMs[frameMs.Count / 2] : 0f, worstMs = frameMs.Count > 0 ? frameMs[frameMs.Count - 1] : 0f;
+            string tag = "head" + headYaw.ToString("F0");
+            Check("opening.hand_ahead." + tag, shown > 0 && Mathf.Abs(worstYaw) < 6f, "worst yaw from the view to the hand=" + worstYaw.ToString("F1") + " deg over " + shown + " frames, first shown at " + firstShown.ToString("F2") + " s");
+            Check("opening.no_jump." + tag, shown > 0 && worstTurn < 0.5f, "largest turn of the view between two frames with the head still=" + worstTurn.ToString("F2") + " deg");
+            // Writing a frame for a video costs the next frame: the stall is judged only on runs that record none.
+            if (dir == null) Check("opening.no_stall." + tag, worstMs < Mathf.Max(100f, median * 6f), "frame ms median=" + median.ToString("F1") + " worst=" + worstMs.ToString("F1"));
+            float wait = Time.time + 2f;
+            while (Time.time < wait) yield return null;
+        }
+        // Back to a straight headset for the cases after this one.
+        LunaHeadTracker.TestPose = () => (Quaternion.identity, Vector3.zero);
+        LunaHeadTracker.Recentre();
+        yield return WaitFrames(3);
+        LunaHeadTracker.TestPose = null;
+    }
+
     IEnumerator HandsAtHead()
     {
         var offField = typeof(Player_Control_scr).GetField("HAND_offset", AnyField);
@@ -717,6 +779,8 @@ public class LunaProbe : MonoBehaviour
             foreach (var other in new[] { "STONE", "WARP", "LEVEL" }) { var t = crystal.Find(other); if (t != null) t.gameObject.SetActive(other == "WARP"); }
             var button = warp.GetComponentsInChildren<UnityEngine.UI.Button>().First();
             var image = button.GetComponent<UnityEngine.UI.Graphic>();
+            // A selected button, as after a click: the violet cursor (HUD/.../SELECT) sits on it.
+            UnityEngine.EventSystems.EventSystem.current.SetSelectedGameObject(button.gameObject);
             yield return WaitFrames(5);
             float before = image.canvasRenderer.GetInheritedAlpha();
             if (round == 1) gp.enabled = false;
@@ -728,9 +792,184 @@ public class LunaProbe : MonoBehaviour
             while (frames++ < 40) yield return null; // the scene load starts 1 s after the effect
             float during = image != null ? image.canvasRenderer.GetInheritedAlpha() : -1f;
             if (round == 0) Check("warp.menus_hidden_while_loading", before > 0.9f && during < 0.05f, "alpha before=" + before.ToString("F2") + " during=" + during.ToString("F2"));
+            // The menus stop drawing by alpha, so the selected button stays active: the violet cursor stayed alone on
+            // the loading screen (Felipe, the notebook build, 2026-11-13; LESSONS 40).
+            var cursorsShown = hud.GetComponentsInChildren<UnityEngine.UI.Image>(true)
+                .Where(i => i.name == "SELECT" && i.enabled && i.gameObject.activeInHierarchy && i.canvasRenderer.GetInheritedAlpha() > 0.05f)
+                .Select(i => i.transform.parent != null ? i.transform.parent.name + "/SELECT" : "SELECT").ToArray();
+            if (round == 0) Check("warp.cursor_hidden_while_loading", cursorsShown.Length == 0, "cursors shown=[" + string.Join(",", cursorsShown) + "]");
             else Log("WARP game alone alpha before=" + before.ToString("F2") + " during=" + during.ToString("F2"));
             float end = Time.time + 8f;
             while (Time.time < end) yield return null;
+        }
+    }
+
+    // Violet graphics on screen that do not frame the selected button: the game's SELECT cursor (any violet box)
+    // shown with nothing selected, on a hidden button, or with a size or place that is not the selected button's.
+    static System.Collections.Generic.List<string> StrayViolet(string where)
+    {
+        var es = UnityEngine.EventSystems.EventSystem.current;
+        var sel = es != null ? es.currentSelectedGameObject : null;
+        var selRt = sel != null && sel.activeInHierarchy ? sel.GetComponent<RectTransform>() : null;
+        var stray = new System.Collections.Generic.List<string>();
+        // A disabled root canvas draws nothing (the port switches off MAUS_CANVAS, the game's mouse cursor).
+        foreach (var canvas in FindObjectsOfType<Canvas>().Where(c => c.isRootCanvas && c.isActiveAndEnabled))
+            foreach (var g in canvas.GetComponentsInChildren<Graphic>())
+            {
+                if (!g.isActiveAndEnabled || g.color.a < 0.05f || g.canvasRenderer.GetInheritedAlpha() < 0.05f || g.canvasRenderer.cull) continue;
+                bool violet = g.name == "SELECT" || (g.color.b > 0.8f && g.color.r < 0.4f && g.color.g < 0.2f);
+                if (!violet || g is TMP_Text) continue;
+                var path = g.name;
+                for (var t = g.transform.parent; t != null; t = t.parent) path = t.name + "/" + path;
+                var r = g.rectTransform;
+                var parent = r.parent;
+                Vector2 Local(Vector3 world) => parent != null ? (Vector2)parent.InverseTransformPoint(world) : (Vector2)world;
+                Vector2 size = r.rect.size, centre = Local(r.TransformPoint(r.rect.center));
+                string detail = where + " " + path + " size=" + size.ToString("F0");
+                if (selRt == null) { stray.Add(detail + " selected=" + (sel != null ? sel.name + "(hidden)" : "none")); continue; }
+                var c = new Vector3[4];
+                selRt.GetWorldCorners(c);
+                Vector2 a = Local(c[0]), b = Local(c[2]);
+                Vector2 want = new Vector2(Mathf.Abs(b.x - a.x), Mathf.Abs(b.y - a.y)) + new Vector2(12f, 12f), wantCentre = (a + b) / 2f;
+                bool fits = Mathf.Abs(size.x - want.x) < 10f && Mathf.Abs(size.y - want.y) < 10f && Vector2.Distance(centre, wantCentre) < 10f;
+                if (!fits) stray.Add(detail + " on " + sel.name + " want=" + want.ToString("F0") + " off by " + Vector2.Distance(centre, wantCentre).ToString("F0"));
+            }
+        return stray;
+    }
+
+    // Quitting to the title from the pause menu (Felipe, notebook build, 2026-11-13): the violet cursor stayed alone on
+    // the loading screen, every time. The game closes its menus (current_menu = -1) before the load, unlike the warp map.
+    IEnumerator QuitToTitle()
+    {
+        Hold_Data.HD = Data(Vector3.zero);
+        SceneManager.LoadScene("PITT_A1");
+        yield return WaitFrames(3);
+        float settle = Time.time + 3f;
+        while (Time.time < settle) yield return null;
+        var menu = FindObjectOfType<Menus>();
+        var mainT = menu.GetComponentsInChildren<Transform>(true).First(t => t.name == "MAIN");
+        for (var x = mainT; x != null; x = x.parent) x.gameObject.SetActive(true);
+        FindObjectOfType<Player_Control_scr>().Freeze = true; // the pause menu is open
+        menu.current_menu = 0;
+        menu.LoadMenu();
+        yield return WaitFrames(10);
+        menu.Click(49); // EXIT: "Exit to Menu?", YES selected
+        yield return WaitFrames(30);
+        var before = StrayViolet("query");
+        Log("QUIT on the query: stray=[" + string.Join(" | ", before) + "]");
+        menu.Click(28); // YES
+        // The laser must go at once: a check a few times a second left it on for a moment (Felipe's Quest, 2026-11-13).
+        yield return WaitFrames(2);
+        var gpNow = FindObjectOfType<LunaVRGameplay>();
+        var pointerNow = typeof(LunaVRGameplay).GetField("pointer", AnyField).GetValue(gpNow) as Behaviour;
+        Check("quit.laser_off_at_once", pointerNow == null || !pointerNow.enabled, "pointer enabled 2 frames after YES=" + (pointerNow != null && pointerNow.enabled));
+        yield return WaitFrames(8);
+        var soon = StrayViolet("loading+10");
+        yield return WaitFrames(30);
+        var later = StrayViolet("loading+40");
+        Check("quit.cursor_hidden_while_loading", soon.Count == 0 && later.Count == 0, "stray=[" + string.Join(" | ", soon.Concat(later)) + "]");
+        // The port's own lilac laser (line, dot and grip) is drawn only with a headset, so the shots never show it:
+        // check the pointer itself is off while the level loads.
+        var gp = FindObjectOfType<LunaVRGameplay>();
+        var pointer = typeof(LunaVRGameplay).GetField("pointer", AnyField).GetValue(gp) as Behaviour;
+        Log("QUIT player frozen=" + FindObjectOfType<Player_Control_scr>().Freeze + " load active=" + (FindObjectOfType<Level_Load_Effect>() != null));
+        Check("quit.laser_off_while_loading", pointer == null || !pointer.enabled, "pointer enabled=" + (pointer != null && pointer.enabled));
+        float end = Time.time + 6f;
+        while (Time.time < end) yield return null;
+    }
+
+    // The game's cursor glides to a new selection in a coroutine (Menus.SEL_BOUNCE) guarded by SEL_BB. When the HUD goes
+    // inactive mid-glide the coroutine dies with SEL_BB still true, and the cursor never moves again in that scene: on the
+    // first launch it stayed under SETTINGS while YES was selected (Felipe's Quest photos, 2026-11-13; LESSONS 41).
+    IEnumerator CursorGlideCut()
+    {
+        Hold_Data.HD = Data(Vector3.zero);
+        SceneManager.LoadScene("PITT_A1");
+        yield return WaitFrames(3);
+        float settle = Time.time + 3f;
+        while (Time.time < settle) yield return null;
+        var menu = FindObjectOfType<Menus>();
+        var mainT = menu.GetComponentsInChildren<Transform>(true).First(t => t.name == "MAIN");
+        for (var x = mainT; x != null; x = x.parent) x.gameObject.SetActive(true);
+        var plr = FindObjectOfType<Player_Control_scr>();
+        plr.Freeze = true;
+        menu.current_menu = 0;
+        menu.LoadMenu();
+        yield return WaitFrames(30);
+        menu.Click(3); // SETTINGS: the selection moves, the glide starts
+        yield return null;
+        menu.gameObject.SetActive(false); // the HUD goes away mid-glide
+        yield return WaitFrames(3);
+        menu.gameObject.SetActive(true);
+        yield return WaitFrames(5);
+        menu.Click(49); // EXIT: "Exit to Menu?", YES selected
+        yield return WaitFrames(60);
+        var es = UnityEngine.EventSystems.EventSystem.current;
+        var sel = es.currentSelectedGameObject;
+        float gap = sel != null ? Vector3.Distance(menu.SEL.transform.position, sel.transform.position) : -1f;
+        var stray = StrayViolet("after a cut glide");
+        Check("cursor.follows_after_cut_glide", sel != null && gap < 0.05f && stray.Count == 0, "selected=" + (sel != null ? sel.name : "none") + " gap=" + gap.ToString("F3") + " stray=[" + string.Join(" | ", stray) + "]");
+        menu.current_menu = -1;
+        menu.LoadMenu();
+        plr.Freeze = false;
+    }
+
+    // The first launch after an install (Felipe, notebook build, 2026-11-13): in the game's own menu, the violet cursor
+    // stretched over several buttons and a violet box under SETTINGS on the settings page; gone after a restart. A fresh
+    // install has no SETTINGS.MIDNIGHT and no PlayerPrefs. Round 0 starts without them, round 1 with what round 0 wrote.
+    static readonly string[] FirstLaunchPrefs = { "LunaVR_WalkByDefault", "LunaVR_SnapAngle30", "I2 Language", "Volume", "GAMMA", "AEST" };
+
+    IEnumerator FirstLaunch()
+    {
+        string settings = Lunacid.VR.LunacidFileSystemHelper.GetSavePath("SETTINGS.MIDNIGHT"), kept = settings + ".probe_kept";
+        bool had = System.IO.File.Exists(settings);
+        if (had) System.IO.File.Copy(settings, kept, true);
+        var prefs = FirstLaunchPrefs.Where(PlayerPrefs.HasKey).ToDictionary(k => k, k => (PlayerPrefs.GetString(k, null), PlayerPrefs.GetInt(k, int.MinValue), PlayerPrefs.GetFloat(k, float.NaN)));
+        try
+        {
+            if (had) System.IO.File.Delete(settings);
+            foreach (var k in FirstLaunchPrefs) PlayerPrefs.DeleteKey(k);
+            for (int round = 0; round < 2; round++)
+            {
+                string tag = round == 0 ? "first" : "second";
+                bool fresh = !System.IO.File.Exists(settings);
+                Hold_Data.HD = Data(Vector3.zero);
+                SceneManager.LoadScene("PITT_A1");
+                yield return WaitFrames(3);
+                float settle = Time.time + 3f;
+                while (Time.time < settle) yield return null;
+                var menu = FindObjectOfType<Menus>();
+                var plr = FindObjectOfType<Player_Control_scr>();
+                // As the game opens its pause menu (Menu button): frozen, page 0, its first button selected.
+                plr.Freeze = true;
+                menu.current_menu = 0;
+                menu.LoadMenu();
+                yield return WaitFrames(30);
+                var stray = StrayViolet(tag + ".pause");
+                ShotHud(tag + "_pause");
+                menu.Click(3); // SETTINGS
+                yield return WaitFrames(30);
+                stray.AddRange(StrayViolet(tag + ".settings"));
+                ShotHud(tag + "_settings");
+                menu.current_menu = -1;
+                menu.LoadMenu();
+                plr.Freeze = false;
+                yield return WaitFrames(10);
+                Check("first_launch.cursor_fits." + tag, stray.Count == 0, "settings file at start=" + !fresh + " stray=[" + string.Join(" | ", stray) + "]");
+            }
+        }
+        finally
+        {
+            if (had) System.IO.File.Copy(kept, settings, true);
+            if (had) System.IO.File.Delete(kept);
+            foreach (var k in FirstLaunchPrefs) PlayerPrefs.DeleteKey(k);
+            foreach (var kv in prefs)
+            {
+                if (kv.Value.Item1 != null) PlayerPrefs.SetString(kv.Key, kv.Value.Item1);
+                else if (kv.Value.Item2 != int.MinValue) PlayerPrefs.SetInt(kv.Key, kv.Value.Item2);
+                else PlayerPrefs.SetFloat(kv.Key, kv.Value.Item3);
+            }
+            PlayerPrefs.Save();
         }
     }
 
@@ -1234,6 +1473,25 @@ public class LunaProbe : MonoBehaviour
                 var valuesGone = GameValuesShown.Where(p => { var t = mainT.Find(p); var tmp = t != null ? t.GetComponent<TMP_Text>() : null;
                                                             return tmp == null || !tmp.gameObject.activeInHierarchy || string.IsNullOrWhiteSpace(tmp.text); }).ToArray();
                 Check("options.values_shown", valuesGone.Length == 0, "values not shown=[" + string.Join(",", valuesGone) + "]");
+                // Nothing may stay visible on a hidden row: on the notebook (2026-11-13, every build since 94) the
+                // AESTHETIC value box stayed as an empty violet rectangle, because the LESSONS 33 rule spared every
+                // graphic with children, not only menu3/Settings whose children sit on other rows (LESSONS 40).
+                var leftOnHiddenRows = new System.Collections.Generic.List<string>();
+                foreach (var path in GameTextsHidden.Where(p => p.StartsWith("menu3/LABELS")))
+                {
+                    var label = mainT.Find(path) as RectTransform;
+                    if (label == null) continue;
+                    Vector3 lp = page.InverseTransformPoint(label.TransformPoint(label.rect.center));
+                    foreach (var g in page.GetComponentsInChildren<Graphic>())
+                    {
+                        if (!g.enabled || g.color.a < 0.05f || g.canvasRenderer.GetAlpha() < 0.05f || g.rectTransform.rect.height > 90f) continue;
+                        if (g is TMP_Text tx && string.IsNullOrWhiteSpace(tx.text)) continue;
+                        Vector3 gpos = page.InverseTransformPoint(g.rectTransform.TransformPoint(g.rectTransform.rect.center));
+                        if (Mathf.Abs(gpos.y - lp.y) > 18f || Mathf.Sign(gpos.x) != Mathf.Sign(lp.x) || gpos.x < lp.x - 40f) continue;
+                        leftOnHiddenRows.Add(path.Split('/').Last() + ":" + g.name);
+                    }
+                }
+                Check("options.hidden_rows_empty", leftOnHiddenRows.Count == 0, "still visible=[" + string.Join(",", leftOnHiddenRows.Distinct()) + "]");
             }
         }
         var notExpected = shown.Where(n => !GameOptionsShown.Contains(n)).ToArray();
@@ -1604,6 +1862,31 @@ public class LunaProbe : MonoBehaviour
         if (caster != null) Destroy(caster.gameObject);
         Check("spell.every_item_emit", off1 == 0 && moved > 20, moved + " of " + swept + " spells flew; off the aim mark: " + string.Join(", ", offNames));
         LunaHeadTracker.TestPose = null;
+    }
+
+    // What the headset shows in a level: every camera drawing to it, in depth order, into one picture.
+    void ShotHud(string name, bool fullPath = false)
+    {
+        var rt = new RenderTexture(fullPath ? 960 : 1600, fullPath ? 540 : 900, 24);
+        // LUNA_PROBE_FOV=<degrees>: the headset's field of view instead of the game camera's (the Quest 3S shows about 96).
+        float.TryParse(System.Environment.GetEnvironmentVariable("LUNA_PROBE_FOV") ?? "", System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float fov);
+        foreach (var c in Camera.allCameras.Where(c => c.targetTexture == null && c.stereoTargetEye != StereoTargetEyeMask.None).OrderBy(c => c.depth))
+        {
+            float fovWas = c.fieldOfView;
+            if (fov > 1f) c.fieldOfView = fov;
+            c.targetTexture = rt;
+            c.Render();
+            c.targetTexture = null;
+            c.fieldOfView = fovWas;
+        }
+        var was = RenderTexture.active;
+        RenderTexture.active = rt;
+        var tex = new Texture2D(rt.width, rt.height, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+        RenderTexture.active = was;
+        System.IO.File.WriteAllBytes(fullPath ? name : "/tmp/luna_probe_hud_" + name + ".png", tex.EncodeToPNG());
+        Destroy(tex);
+        rt.Release();
     }
 
     void Shot(string name)

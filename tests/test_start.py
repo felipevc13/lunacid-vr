@@ -48,11 +48,17 @@ class Steps:
     def quest(self):
         if self.quest_after > 0:
             self.quest_after -= 1
-            return False
-        return True
+            return "none"
+        return "device"
 
     def installed_before(self):
         return False
+
+    def reask(self):
+        self.ran.append("reask")
+
+    def sleep(self, seconds):
+        pass
 
     def install(self):
         self.ran.append("install")
@@ -109,14 +115,50 @@ class TestStart(unittest.TestCase):
         s = Steps(ready=True, built=True, quest_after=2)
         run_start(s)
         self.assertEqual(s.ran, ["install"])
-        self.assertGreaterEqual(len(s.asked), 1)
-        text = " ".join(s.asked + s.said)
+        text = " ".join(s.said)
         self.assertIn("USB", text)
         self.assertIn("Allow", text)
+        self.assertEqual(s.asked, [])          # it watches the cable by itself: no Enter to press
+
+    def test_a_quest_waiting_for_permission_is_asked_again_by_itself(self):
+        # 2026-11-13 on the Windows notebook: adb said "unauthorized" and nothing showed in the headset. The Quest
+        # opens its "Allow USB debugging" panel the moment the cable goes in, where the headset is facing; with the
+        # headset on a table nobody sees it, and it ignores new requests while that one is pending. start asks the
+        # Quest again by itself (now the headset is on), instead of leaving the person to guess.
+        s = Steps(ready=True, built=True)
+        states = iter(["unauthorized"] * 20 + ["device"])
+        s.quest = lambda: next(states)
+        run_start(s)
+        self.assertIn("reask", s.ran)
+        self.assertEqual(s.ran[-1], "install")
+        self.assertIn("Allow", " ".join(s.said))
+
+    def test_when_asking_again_does_not_help_it_says_what_to_do_by_hand(self):
+        s = Steps(ready=True, built=True)
+        states = iter(["unauthorized"] * 200 + ["device"])
+        s.quest = lambda: next(states)
+        run_start(s)
+        self.assertEqual(s.ran.count("reask"), 3)
+        text = " ".join(s.said)
+        self.assertIn("Unplug the cable", text)
+        self.assertIn("plug the cable back in", text)
+        self.assertIn("restart the Quest", text)
+        self.assertEqual(s.ran[-1], "install")
+
+    def test_headset_on_before_the_cable(self):
+        s = Steps(ready=True, built=True)
+        run_start(s)
+        plug = next(line for line in s.said if "cable" in line)
+        self.assertLess(plug.index("headset"), plug.index("cable"))
+
+    def test_gives_up_with_a_sentence_when_no_quest_ever_shows(self):
+        s = Steps(ready=True, built=True, quest_after=10 ** 6)
+        self.assertNotEqual(run_start(s), 0)
+        self.assertNotIn("install", s.ran)
 
     def test_offers_saves_from_a_backup_after_the_first_launch(self):
         s = Steps(ready=True, built=True, backups=True)
-        answers = iter(["", "y", ""])   # Quest plugged in, yes to the saves, game opened once
+        answers = iter(["y", ""])   # yes to the saves, game opened once
         s.ask = lambda q: (s.asked.append(q), next(answers))[1]
         run_start(s)
         self.assertEqual(s.ran, ["install", "restore"])
