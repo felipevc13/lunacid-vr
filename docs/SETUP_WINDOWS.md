@@ -35,7 +35,8 @@ Turn on the Quest's **developer mode** (needed to install games from a computer)
 
 In this order. Each one is shown in the window when it is needed:
 
-1. **Windows asks for permission** a few times, while programs install: choose **Yes**.
+1. **Windows asks for permission** a few times, while programs install: choose **Yes**. **Windows Security** may
+   also ask whether `adb` (the program that talks to the Quest) may use the network: choose **Allow**.
 2. **Unity Hub opens** (Unity is the program that builds the game). Sign in, or make a free account, and choose the
    free **Personal** licence if asked. Then go back to the PowerShell window and press **Enter**.
 3. **Your Steam user name** (the one you log in with, not your e-mail). Then **SteamCMD**, Valve's own program,

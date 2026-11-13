@@ -105,12 +105,18 @@ def check_log(log, scenes):
     return problems
 
 
-def run_unity(cmd, env, log, limit_s):
+def run_unity(cmd, env, log, limit_s, watcher=None):
+    """Run Unity; with a watcher (core.progress.BuildWatcher) one line says which phase it is in and how far."""
+    from core import progress
     full_env = dict(os.environ, **env)
     start = time.time()
+    offset = 0
     proc = subprocess.Popen(cmd, env=full_env)
     while proc.poll() is None:
         time.sleep(10)
+        if watcher:
+            offset = progress.feed_new(log, offset, watcher)
+            progress.live(watcher.line(int((time.time() - start) / 60)))
         if os.path.exists(log) and os.path.getsize(log) > LOG_LIMIT:
             proc.kill()
             return "the Unity log passed %d MB; build stopped" % (LOG_LIMIT // (1024 * 1024))
@@ -159,7 +165,10 @@ def main():
             os.remove(f)
     print("== Unity build (%s, %d scenes), log: %s" % ("fast" if args.fast else "full", len(scenes), log))
     start = time.time()
-    stopped = run_unity(cmd, env, log, args.limit_min * 60)
+    from core import progress
+    watcher = progress.BuildWatcher(len(scenes), progress.count_assets(cfg["project"]), progress.language())
+    stopped = run_unity(cmd, env, log, args.limit_min * 60, watcher)
+    print()
     minutes = (time.time() - start) / 60
     out = os.path.join(cfg["work"], "builds", datetime.datetime.now().strftime("%Y%m%d_%H%M"))
     failure = stopped or (None if os.path.exists(apk) else "no APK at %s" % apk)

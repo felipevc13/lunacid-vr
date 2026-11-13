@@ -65,18 +65,8 @@ LANG = "en"     # setup() sets it from the computer's language; the progress lin
 UNITY_TOTAL = 9 * 1024 * MB    # Unity 6000.0.85f1 with Android, OpenJDK and the SDK/NDK, roughly, installed
 
 
-def time_left(fraction, seconds, lang="en"):
-    """'about 3 min left' from how far it is (0..1) and how long it took; '' when it is too early to guess."""
-    if not seconds or seconds < 5 or fraction <= 0.01 or fraction >= 1:
-        return ""
-    left = seconds * (1 - fraction) / fraction
-    if left < 60:
-        return "menos de um minuto" if lang == "pt" else "less than a minute left"
-    minutes = int(round(left / 60.0))
-    if minutes >= 120:
-        hours = "%.1f" % (minutes / 60.0)
-        return ("faltam umas %s h" % hours.replace(".", ",")) if lang == "pt" else "about %s h left" % hours
-    return ("faltam uns %d min" % minutes) if lang == "pt" else "about %d min left" % minutes
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from core.progress import time_left  # noqa: E402  (one estimate for every tool)
 
 
 def progress_line(label, done, total, seconds=None, lang="en"):

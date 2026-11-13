@@ -639,20 +639,9 @@ TEXT = {
 
 
 def language(env=None, system_locale=None):
-    """'pt' on a Portuguese computer, else 'en'. LUNA_LANG chooses."""
-    env = os.environ if env is None else env
-    if env.get("LUNA_LANG") in TEXT:
-        return env["LUNA_LANG"]
-    if system_locale is None:
-        try:
-            import locale
-            system_locale = locale.getlocale()[0]
-        except Exception:
-            system_locale = None
-    for value in (env.get("LC_ALL"), env.get("LANG"), system_locale):
-        if value and (value.lower().startswith("pt") or value.lower().startswith("portuguese")):
-            return "pt"
-    return "en"
+    """'pt' on a Portuguese computer, else 'en' (core/progress.py, shared by every tool). LUNA_LANG chooses."""
+    from core import progress
+    return progress.language(env, system_locale)
 
 
 def start(steps, lang="en", tries=30, log_dir=None):

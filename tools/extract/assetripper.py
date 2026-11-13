@@ -156,9 +156,26 @@ def export(assetripper, game, out, limit_min=180):
                 raise RuntimeError("AssetRipper did not take these settings: " + ", ".join(wrong))
         print("== exporting to", out)
         size = os.path.getsize(log) if log and os.path.exists(log) else 0
-        post(base, "/Export/UnityProject", {"path": out}, timeout=limit_min * 60)
-        if log:
-            wait_line(log, "Finished post-export", proc, limit_min * 60, size)
+        # The export call returns only when AssetRipper is done: show its progress beside it, from its own log.
+        import threading
+        from core import progress
+        stop, began, lang = threading.Event(), time.time(), progress.language()
+
+        def show():
+            while not stop.wait(3):
+                line = progress.export_status(log, size, time.time() - began, lang)
+                if line:
+                    progress.live(line)
+        watcher = threading.Thread(target=show, daemon=True)
+        watcher.start()
+        try:
+            post(base, "/Export/UnityProject", {"path": out}, timeout=limit_min * 60)
+            if log:
+                wait_line(log, "Finished post-export", proc, limit_min * 60, size)
+        finally:
+            stop.set()
+            watcher.join(5)
+            print()
     finally:
         proc.terminate()
         try:
