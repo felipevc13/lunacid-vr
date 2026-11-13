@@ -93,6 +93,7 @@ BEE = re.compile(r"^\[\s*(\d+)/(\d+)\s", re.M)
 WORDS = {
     "en": {"start": "Build: starting Unity... (%d min)",
            "import": "Build: importing the project, %d%% (%d of %d), %s",
+           "import_more": "Build: finishing the import (%d files so far, %d min)",
            "scene": "Build: scene %d of %d (%d min)",
            "shaders": "Build: compiling shaders (%d so far), %d min",
            "scripts": "Build: compiling the scripts: %d%% (%d of %d), %s",
@@ -153,6 +154,8 @@ class BuildWatcher:
         secs = self.clock() - self.phase_began     # time left is read from this phase's own pace
         if self.phase == "import":
             done, total = self.imports, max(self.assets, 1)
+            if done >= total:      # Unity also imports packages and some files twice: past the estimate, a count
+                return w["import_more"] % (done, minutes)
             pct = min(99, done * 100 // total)
             return w["import"] % (pct, done, total, time_left(pct / 100.0, secs, self.lang) or "%d min" % minutes)
         if self.phase == "scene":

@@ -40,9 +40,14 @@ class TestBuild(unittest.TestCase):
         self.assertIn("25%", line)
         self.assertIn("2000 of 8000", line)
 
-    def test_import_never_says_100_before_it_is_done(self):
+    def test_more_imports_than_files_is_not_a_percentage(self):
+        # 2026-11-13 on the notebook: "importing the project, 99% (10262 of 8260), less than a minute left". Unity
+        # also imports the packages the passes add, and some files twice. Past the estimate: a count, no promise.
         text = "".join("Start importing Assets/a%d.png using Guid(x)\n" % i for i in range(9000))
-        self.assertIn("99%", self.watch(text))
+        line = self.watch(text)
+        self.assertIn("finishing the import (9000 files so far", line)
+        self.assertNotIn("%", line)
+        self.assertNotIn("left", line)
 
     def test_scenes_are_counted_as_unity_opens_them(self):
         # "[Scene n/30]" is only the list, written all at once; "Opening scene" comes as each one is processed.
