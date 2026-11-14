@@ -94,6 +94,10 @@ class Base(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp)
 
+    def only_here(self, path):
+        """Files of this test only: the CI's Windows machine has a real Unity Hub in Program Files."""
+        return os.path.abspath(path).startswith(os.path.abspath(self.tmp)) and os.path.exists(path)
+
 
 class TestAssetRipper(Base):
     def test_the_right_file_for_each_computer(self):
@@ -312,7 +316,7 @@ class TestWindowsInstallerNeedsPermission(Base):
         other = os.path.join(self.tmp, "Programs", "Unity Hub", "Unity Hub.exe")
         write(other, b"exe")
         hub = sm.ensure_hub("Windows", Fake().run, which=lambda n: None, say=lambda *a: None,
-                            candidates=[sm.HUB["Windows"], other])
+                            candidates=[sm.HUB["Windows"], other], exists=self.only_here)
         self.assertEqual(hub, other)
 
     def test_winget_installing_for_this_user_is_enough(self):
@@ -326,7 +330,7 @@ class TestWindowsInstallerNeedsPermission(Base):
         fake.rules.append((lambda c: True, lambda c: self.fail("ran %s after winget installed the Hub" % c)))
         hub = sm.ensure_hub("Windows", fake.run, which=lambda n: "winget", say=said.append,
                             fetch=lambda *a: self.fail("downloaded Unity's installer"),
-                            candidates=[sm.HUB["Windows"], other])
+                            candidates=[sm.HUB["Windows"], other], exists=self.only_here)
         self.assertEqual(hub, other)
         self.assertFalse(any("did not install" in line for line in said), said)
 
@@ -350,7 +354,8 @@ class TestProgress(Base):
         write(src, b"x" * (3 * 1024 * 1024 + 7))
         said = []
         dest = os.path.join(self.tmp, "out", "big.bin")
-        sm.download("file://" + src, dest, label="AssetRipper", say=said.append)
+        import pathlib
+        sm.download(pathlib.Path(src).as_uri(), dest, label="AssetRipper", say=said.append)
         with open(dest, "rb") as fh:
             self.assertEqual(len(fh.read()), 3 * 1024 * 1024 + 7)
         self.assertTrue(any("100%" in line and "AssetRipper" in line for line in said), said)
