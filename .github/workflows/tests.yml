@@ -1,0 +1,25 @@
+# The Python tests on clean Windows and Mac machines, for every pull request and every change to main.
+# main is what people get when they paste the install line again: nothing reaches it without these passing.
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  tests:
+    # Only in the public repository (the development one is private, and its Mac minutes cost).
+    if: github.repository == 'felipevc13/lunacid-vr'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Python tests
+        run: python -m unittest discover -s tests -v
