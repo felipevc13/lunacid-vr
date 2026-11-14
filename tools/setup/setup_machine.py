@@ -70,11 +70,13 @@ from core.progress import time_left  # noqa: E402  (one estimate for every tool)
 
 
 def progress_line(label, done, total, seconds=None, lang="en"):
+    # Under 1 MB in KB: small files read "0 of 0 MB" (the notebook, 2026-11-13).
+    unit, size = ("MB", MB) if max(done, total) >= MB else ("KB", 1024)
     if total:
-        line = "%s: %d%% (%d of %d MB)" % (label, done * 100 // total, done // MB, total // MB)
+        line = "%s: %d%% (%d of %d %s)" % (label, done * 100 // total, done // size, total // size, unit)
         left = time_left(float(done) / total, seconds, lang)
         return line + (", " + left if left else "")
-    return "%s: %d MB" % (label, done // MB)
+    return "%s: %d %s" % (label, done // size, unit)
 
 
 def _live(line, end=False):
@@ -334,6 +336,10 @@ def unity_progress(log, editor, minutes, total=UNITY_TOTAL, lang="en"):
             left = time_left(pct / 100.0, minutes * 60, lang)
             return "Unity: %d%%%s" % (pct, ", " + left if left else "")
     size = folder_size(editor) if editor and os.path.isdir(editor) else 0
+    # Past the usual size (Windows with Android passes 12 GB against the Mac's 9) an estimate is wrong: say what is
+    # there and how long it has been (the notebook, 2026-11-13: "12.1 GB of about 9 GB (99%)").
+    if total and size > total:
+        return "Unity: %.1f GB installed so far, still going (%d min)" % (size / 1024.0 / MB, minutes)
     pct = min(99, size * 100 // total) if total else 0
     left = time_left(pct / 100.0, minutes * 60, lang)
     gb = "%.1f GB of about %.0f GB" % (size / 1024.0 / MB, total / 1024.0 / MB)
@@ -391,8 +397,11 @@ def ensure_hub(system, runner=run, exists=os.path.exists, which=shutil.which, sa
             say("installing Unity Hub (winget; Windows may ask for permission)...")
             rc, out = runner(["winget", "install", "--id", "Unity.UnityHub", "-e", "--accept-source-agreements",
                               "--accept-package-agreements"])
-            if not exists(hub):
-                say("winget did not install it: %s" % (out.strip().splitlines() or ["no output"])[-1])
+            # winget may install it for this user only (AppData\Local\Programs): every place counts.
+            found = next((c for c in candidates if exists(c)), None)
+            if found:
+                return found
+            say("winget did not install it: %s" % (out.strip().splitlines() or ["no output"])[-1])
         if not exists(hub):
             installer = os.path.join(tools, "downloads", "UnityHubSetup-%s.exe" % cpu)
             say("installing Unity Hub (Unity's installer): Windows asks for permission, choose Yes...")
@@ -415,20 +424,33 @@ def ensure_hub(system, runner=run, exists=os.path.exists, which=shutil.which, sa
                   "again." % (out.strip()[-200:] or "no output"))
 
 
-def sign_in(home, system, hub, ask=input, launch=None, say=print, check=None):
+def sign_in(home, system, hub, ask=input, launch=None, say=print, check=None, sleep=None, clock=None, limit=1200):
     """Unity builds only with a licence, which Unity Hub writes when the person signs in. Ask for it now, at the
-    start, instead of letting the build fail an hour later."""
+    start, instead of letting the build fail an hour later. Setup watches for the licence and goes on by itself: a
+    "press Enter" here sat unseen under the Hub's log on the notebook (2026-11-13). `ask` is kept for callers."""
+    import time
     check = check or check_licence
+    sleep = sleep or time.sleep
+    clock = clock or time.monotonic
     if check(home, system)[0] == "OK":
         return True
-    launch = launch or (lambda path: subprocess.Popen([path]))
-    say("\nUnity Hub is opening. Sign in there (make a free Unity account if you have none) and, if it asks,")
-    say("choose the free Personal licence.")
+    # The Hub writes its own log lines; they stay out of the person's window.
+    launch = launch or (lambda path: subprocess.Popen([path], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                                      stderr=subprocess.DEVNULL))
+    say("\nUnity Hub is opening (it may open behind this window). Sign in there, or make a free Unity account,")
+    say("and if it asks, choose the free Personal licence. Nothing to press here: this goes on by itself.")
     launch(hub)
-    ask("When you have signed in to Unity Hub, press Enter here to continue...")
-    if check(home, system)[0] == "OK":
-        return True
-    say("No Unity licence found yet; setup goes on, and doctor will remind you before the build.")
+    start = clock()
+    reminded = start
+    while clock() - start < limit:
+        sleep(3)
+        if check(home, system)[0] == "OK":
+            say("Signed in to Unity: going on.")
+            return True
+        if clock() - reminded >= 120:
+            reminded = clock()
+            say("Still waiting for the Unity Hub sign-in (look for its window in the taskbar)...")
+    say("No Unity licence after %d minutes; setup goes on, and doctor will remind you before the build." % (limit // 60))
     return False
 
 

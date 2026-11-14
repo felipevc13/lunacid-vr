@@ -315,6 +315,21 @@ class TestWindowsInstallerNeedsPermission(Base):
                             candidates=[sm.HUB["Windows"], other])
         self.assertEqual(hub, other)
 
+    def test_winget_installing_for_this_user_is_enough(self):
+        """2026-11-13, the public run on the notebook: winget put the Hub in AppData\\Local\\Programs and said
+        "Successfully installed"; setup looked only in Program Files, said "winget did not install it: Successfully
+        installed", downloaded Unity's 184 MB installer and installed the Hub a second time."""
+        other = os.path.join(self.tmp, "Programs", "Unity Hub", "Unity Hub.exe")
+        fake = Fake()
+        said = []
+        fake.rules.append((lambda c: c[0] == "winget", lambda c: (write(other, b"exe"), (0, "Successfully installed"))[1]))
+        fake.rules.append((lambda c: True, lambda c: self.fail("ran %s after winget installed the Hub" % c)))
+        hub = sm.ensure_hub("Windows", fake.run, which=lambda n: "winget", say=said.append,
+                            fetch=lambda *a: self.fail("downloaded Unity's installer"),
+                            candidates=[sm.HUB["Windows"], other])
+        self.assertEqual(hub, other)
+        self.assertFalse(any("did not install" in line for line in said), said)
+
     def test_winget_failing_says_what_it_answered(self):
         url = "https://public-cdn.cloud.unity3d.com/hub/prod/UnityHubSetup-x64.exe"
         fake = Fake({url: b"exe"})
@@ -345,6 +360,25 @@ class TestProgress(Base):
         self.assertEqual(sm.progress_line("SteamCMD", 5 * 1024 * 1024, 20 * 1024 * 1024),
                          "SteamCMD: 25% (5 of 20 MB)")
         self.assertEqual(sm.progress_line("SteamCMD", 5 * 1024 * 1024, 0), "SteamCMD: 5 MB")
+
+    def test_a_small_file_is_counted_in_kb_not_0_of_0_mb(self):
+        """The notebook's public run (2026-11-13): "dotnet-install.ps1: 100% (0 of 0 MB)", "steamcmd.zip: 100% (0 of 0
+        MB)". Under 1 MB the sizes are in KB."""
+        self.assertEqual(sm.progress_line("steamcmd.zip", 300 * 1024, 600 * 1024), "steamcmd.zip: 50% (300 of 600 KB)")
+        self.assertEqual(sm.progress_line("dotnet-install.ps1", 70 * 1024, 70 * 1024), "dotnet-install.ps1: 100% (70 of 70 KB)")
+        self.assertEqual(sm.progress_line("x", 300 * 1024, 0), "x: 300 KB")
+
+    def test_unity_past_the_usual_size_shows_what_is_there_not_a_wrong_estimate(self):
+        """The notebook's public run (2026-11-13): "Unity: 12.1 GB of about 9 GB (99%), less than a minute left" for
+        a long time. Windows with Android is bigger than the Mac's 9 GB: past the estimate, only the size and the time."""
+        editor = os.path.join(self.tmp, "Editor")
+        write(os.path.join(editor, "a.bin"), b"x" * 120)
+        line = sm.unity_progress(None, editor, minutes=14, total=100)
+        self.assertNotIn("of about", line)
+        self.assertNotIn("%", line)
+        self.assertNotIn("left", line)
+        self.assertIn("so far", line)
+        self.assertIn("14 min", line)
 
     def test_unity_uses_hubs_own_percentage_when_it_prints_one(self):
         log = os.path.join(self.tmp, "unity_install.log")
@@ -378,24 +412,52 @@ class TestProgress(Base):
     def test_unity_never_says_100_before_it_is_done(self):
         editor = os.path.join(self.tmp, "Editor")
         write(os.path.join(editor, "a.bin"), b"x" * 100)
-        self.assertIn("99%", sm.unity_progress(None, editor, minutes=1, total=50))
+        self.assertIn("99%", sm.unity_progress(None, editor, minutes=1, total=100))   # at the usual size
+        self.assertNotIn("100%", sm.unity_progress(None, editor, minutes=1, total=50))  # past it: no percentage at all
 
 
 class TestSignIn(Base):
     """Unity needs a licence before it builds: ask for the Hub sign-in at the start, not hours later."""
 
-    def test_opens_the_hub_and_waits_for_the_person(self):
-        opened, asked = [], []
-        state = {"ok": False}
+    def test_opens_the_hub_and_goes_on_by_itself_once_signed_in(self):
+        """The notebook's public run (2026-11-13): Felipe signed in and waited; setup sat on "press Enter here", a line
+        buried under the Hub's own log. Nothing else in setup waits for Enter: it watches for the licence instead."""
+        opened, slept = [], []
+        polls = {"n": 0}
 
-        def ask(q):
-            asked.append(q)
-            state["ok"] = True
-            return ""
-        sm.sign_in(self.tmp, "Darwin", "hub", ask=ask, launch=opened.append, say=lambda *a: None,
-                   check=lambda home, system: ("OK", "") if state["ok"] else ("WARN", "no licence"))
+        def check(home, system):
+            polls["n"] += 1
+            return ("OK", "") if polls["n"] > 3 else ("WARN", "no licence")
+        ok = sm.sign_in(self.tmp, "Darwin", "hub", ask=lambda q: self.fail("asked for Enter"), launch=opened.append,
+                        say=lambda *a: None, check=check, sleep=slept.append, clock=lambda: len(slept) * 3.0)
+        self.assertTrue(ok)
         self.assertEqual(opened, ["hub"])
-        self.assertEqual(len(asked), 1)
+        self.assertGreaterEqual(len(slept), 2)
+
+    def test_no_sign_in_for_a_long_time_goes_on_and_says_so(self):
+        said, slept = [], []
+        ok = sm.sign_in(self.tmp, "Darwin", "hub", ask=lambda q: self.fail("asked for Enter"), launch=lambda h: None,
+                        say=said.append, check=lambda home, system: ("WARN", "no licence"), sleep=slept.append,
+                        clock=lambda: len(slept) * 3.0)
+        self.assertFalse(ok)
+        self.assertTrue(any("doctor" in line for line in said), said)
+
+    def test_the_hubs_own_log_stays_out_of_the_window(self):
+        """The Hub printed "updater cache dir: ..." and "[install-state] downloads-store: pruned ..." into the person's
+        PowerShell, under the question they had to answer (the notebook, 2026-11-13)."""
+        import subprocess
+        started = []
+        real = subprocess.Popen
+        subprocess.Popen = lambda *a, **k: started.append((a, k))
+        try:
+            sm.sign_in(self.tmp, "Windows", "hub", ask=lambda q: "", say=lambda *a: None,
+                       check=lambda home, system: ("WARN", "no licence") if not started else ("OK", ""))
+        finally:
+            subprocess.Popen = real
+        self.assertEqual(len(started), 1)
+        kw = started[0][1]
+        self.assertEqual(kw.get("stdout"), subprocess.DEVNULL)
+        self.assertEqual(kw.get("stderr"), subprocess.DEVNULL)
 
     def test_already_signed_in(self):
         opened = []
