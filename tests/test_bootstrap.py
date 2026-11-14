@@ -56,6 +56,7 @@ class TestMac(unittest.TestCase):
     def setUp(self):
         self.sh = read("setup.sh")
 
+    @unittest.skipIf(os.name == "nt", "setup.sh is the Mac's; Windows has no bash of its own")
     def test_valid_bash(self):
         res = subprocess.run(["bash", "-n", os.path.join(REPO, "setup.sh")], capture_output=True, text=True)
         self.assertEqual(res.returncode, 0, res.stderr)

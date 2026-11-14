@@ -416,7 +416,7 @@ def ensure_hub(system, runner=run, exists=os.path.exists, which=shutil.which, sa
         rc, out = runner(["hdiutil", "attach", "-nobrowse", dmg])
         volume = next((line.split("\t")[-1].strip() for line in out.splitlines() if "/Volumes/" in line), None)
         if volume:
-            runner(["cp", "-R", os.path.join(volume, "Unity Hub.app"), "/Applications/"])
+            runner(["cp", "-R", volume + "/Unity Hub.app", "/Applications/"])   # a Mac path, whatever runs this
             runner(["hdiutil", "detach", volume])
     if exists(hub):
         return hub

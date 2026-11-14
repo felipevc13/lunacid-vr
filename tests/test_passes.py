@@ -698,7 +698,7 @@ class TestProfileConfig(unittest.TestCase):
             profile = runner.load_profile()
         finally:
             os.environ.pop("LUNA_LIGHTMAP_DUMP_DIR", None)
-        self.assertEqual(profile.get("lightmap_dump_dir"), "/tmp/dumps-for-test")
+        self.assertEqual(profile.get("lightmap_dump_dir"), os.path.abspath("/tmp/dumps-for-test"))
         self.assertEqual(profile.get("name"), "Lunacid")
 
 
