@@ -2438,7 +2438,9 @@ public class LunaVRGameplay : MonoBehaviour
         var settingsType = System.Type.GetType("TMPro.TMP_Settings, Unity.TextMeshPro");
         if (assetType == null || settingsType == null) { Debug.Log("LUNA_PERF tmp sprite asset: TMP types not found"); return; }
         Object best = null; int bestCount = -1;
-        foreach (var a in Resources.LoadAll("", assetType))
+        // Only the folder TMP keeps sprite assets in (both Settings name "Sprite Assets/"; Resources paths ignore case).
+        // The root ("") loaded all 822 resource files, 126 MB: 4 to 7 s frozen on the first HUD of a launch (LESSONS 43).
+        foreach (var a in Resources.LoadAll("Sprite Assets", assetType))
         {
             var table = Member(a, "spriteCharacterTable") as System.Collections.ICollection ?? Member(a, "spriteInfoList") as System.Collections.ICollection;
             int n = table != null ? table.Count : 0;
@@ -2636,6 +2638,78 @@ public class LunaHeadTracker : MonoBehaviour
         transform.localPosition = basePosition + aimYaw * yawOffset * (p - positionOffset);
         lastWrittenPosition = transform.localPosition;
         positionWritten = true;
+        if (!sceneCamera) WallFade();
+    }
+
+    // The real head can lean through a wall the body stops at, and the level behind it was drawn (Felipe: people
+    // could use it to find secrets; LESSONS 44). The game's head place (basePosition, inside the body) is always
+    // clear: when the way from it to the camera crosses solid geometry, the view fades to black, and back when out.
+    // A black quad just past the near plane, drawn last, covers both eyes.
+    const float WallMargin = 0.06f;   // the near plane and a little more: a wall that close already shows its inside
+    Renderer wallVeil;
+    Material wallVeilMat;
+    float wallAlpha;
+    int wallFrame = -1;
+    Component wallBody;
+    public float WallVeil => wallAlpha;
+    static readonly RaycastHit[] wallHits = new RaycastHit[16];
+
+    void WallFade()
+    {
+        if (wallFrame == Time.frameCount) return;
+        wallFrame = Time.frameCount;
+        var parent = transform.parent;
+        if (parent == null) return;
+        Vector3 from = parent.TransformPoint(basePosition), to = transform.position, way = to - from;
+        float length = way.magnitude;
+        bool inWall = false;
+        if (length > 0.01f)
+        {
+            if (wallBody == null && PlayerType != null) wallBody = GetComponentInParent(PlayerType);
+            var body = wallBody;
+            int n = Physics.SphereCastNonAlloc(from, WallMargin, way / length, wallHits, length, ~0, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n && !inWall; i++)
+            {
+                var c = wallHits[i].collider;
+                // distance 0: overlapping where the head already is (the body's own capsule, a wall the body touches).
+                if (c == null || wallHits[i].distance <= 0f) continue;
+                if (body != null && c.transform.IsChildOf(body.transform)) continue;
+                if (c.attachedRigidbody != null && !c.attachedRigidbody.isKinematic) continue; // a loose prop, an enemy
+                inWall = true;
+            }
+        }
+        float step = Time.unscaledDeltaTime / (inWall ? 0.12f : 0.25f);
+        wallAlpha = Mathf.MoveTowards(wallAlpha, inWall ? 1f : 0f, Mathf.Max(step, 0.02f));
+        if (wallAlpha <= 0f) { if (wallVeil != null) wallVeil.enabled = false; return; }
+        if (wallVeil == null && !MakeWallVeil()) return;
+        var cam = GetComponent<Camera>();
+        float d = (cam != null ? cam.nearClipPlane : 0.01f) * 1.5f;
+        wallVeil.transform.localPosition = new Vector3(0f, 0f, d);
+        wallVeil.transform.localRotation = Quaternion.identity;
+        wallVeil.transform.localScale = Vector3.one * d * 20f;
+        wallVeilMat.color = new Color(0f, 0f, 0f, wallAlpha);
+        wallVeil.enabled = true;
+    }
+
+    bool MakeWallVeil()
+    {
+        var sh = Shader.Find("UI/Default");
+        if (sh == null) return false;
+        var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        go.name = "Luna wall veil";
+        Destroy(go.GetComponent<Collider>());
+        go.transform.SetParent(transform, false);
+        var cam = GetComponent<Camera>();
+        int layer = 0;
+        if (cam != null && (cam.cullingMask & 1) == 0)
+            for (int l = 0; l < 32; l++) if ((cam.cullingMask & (1 << l)) != 0) { layer = l; break; }
+        go.layer = layer;
+        wallVeilMat = new Material(sh) { name = "Luna wall veil", renderQueue = 5000 };
+        wallVeil = go.GetComponent<MeshRenderer>();
+        wallVeil.sharedMaterial = wallVeilMat;
+        wallVeil.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        wallVeil.receiveShadows = false;
+        return true;
     }
 
     void Write(Quaternion rotation)
