@@ -21,8 +21,10 @@ def language(env=None, system_locale=None):
 
 
 def time_left(fraction, seconds, lang="en"):
-    """'about 3 min left' from how far it is (0..1) and how long it took; '' when it is too early to guess."""
-    if not seconds or seconds < 5 or fraction <= 0.01 or fraction >= 1:
+    """'about 3 min left' from how far it is (0..1) and how long it took; '' when it is too early to guess.
+    Before a tenth is done the pace is not settled: AssetRipper's extraction said "about 22.0 h left" at 1% and
+    took 36 min (Verho port, 2026-11-14)."""
+    if not seconds or seconds < 5 or fraction < 0.10 or fraction >= 1:
         return ""
     left = seconds * (1 - fraction) / fraction
     if left < 60:

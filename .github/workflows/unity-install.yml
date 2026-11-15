@@ -1,0 +1,41 @@
+# Installs Unity 6000.0.85f1 with Android for real, the way setup does, on clean Mac and Windows machines.
+# The Python tests use stand-ins for Unity's programs, so they cannot see Unity changing them: Unity Hub 4.0.0
+# (2026-11-13) dropped the command line setup used, and on a Mac the old Hub waited on a hidden question.
+# This proves the real install; once a week it also catches Unity changing something before a person
+# meets it. Not covered: the Unity sign-in and the game download, which need a person.
+name: unity-install
+
+on:
+  pull_request:
+    paths:
+      - "tools/setup/**"
+      - "core/config.py"
+      - ".github/workflows/unity-install.yml"
+  schedule:
+    - cron: "0 6 * * 1"    # Mondays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  unity:
+    # Only in the public repository (the development one is private, and its Mac minutes cost).
+    if: github.repository == 'felipevc13/lunacid-vr'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Free disk before (Unity with Android is about 9 GB)
+        shell: bash
+        run: df -h . || true
+      - name: Install Unity with Android, as setup does
+        run: python tools/setup/setup_machine.py --unity-only "${{ runner.temp }}/lunacid-work"
+      - name: The CLI's own log
+        if: always()
+        shell: bash
+        run: cat "${{ runner.temp }}/lunacid-work/logs/unity_install.log" || true
