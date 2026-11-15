@@ -214,6 +214,13 @@ class TestTimeLeftLivesHere(unittest.TestCase):
     def test_shared(self):
         self.assertEqual(progress.time_left(0.25, 60), "about 3 min left")
 
+    def test_no_guess_before_a_tenth_is_done(self):
+        # 2026-11-14 (Verho port): AssetRipper's extraction said "about 22.0 h left" at 1% and took 36 min; the
+        # estimate came near only after about 13%. To a layperson a wild first guess looks like a fault.
+        self.assertEqual(progress.time_left(0.011, 870), "")
+        self.assertEqual(progress.time_left(0.09, 300), "")
+        self.assertNotEqual(progress.time_left(0.10, 300), "")
+
 
 class TestAlwaysEnglish(unittest.TestCase):
     def test_every_computer(self):

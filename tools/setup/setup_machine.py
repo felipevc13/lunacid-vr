@@ -3,9 +3,10 @@
 Get everything a build needs, for people who have never used these tools: `python3 lunacid_vr.py setup`.
 
 What it fetches, each only when it is missing, into <work>/tools unless one is already there:
-- Unity 6000.0.85f1 with Android Build Support and its children (OpenJDK, Android SDK & NDK), through Unity Hub's
-  command line (Hub itself through winget on Windows). The exact version and changeset are pinned here, so nobody
-  searches Unity's archive. Unity downloads in the background while the rest goes on.
+- Unity 6000.0.85f1 with Android Build Support and its children (OpenJDK, Android SDK & NDK), through the standalone
+  Unity CLI 1.0.0 (pinned by Unity's SHA-256; Unity Hub 4 no longer runs `-- --headless install`). The exact version
+  and changeset are pinned here, so nobody searches Unity's archive. Unity downloads in the background while the
+  rest goes on. Unity Hub (winget on Windows) is still where the person signs in for the licence.
 - SteamCMD from Valve, its first self-update (emptied and retried when it fails, as it did on Windows 11), then the
   supported game version. Only the Steam user name is asked here, and it only goes on SteamCMD's command line;
   the password and Steam Guard code are typed into SteamCMD itself.
@@ -356,15 +357,106 @@ def editor_folder(unity, system):
     return unity
 
 
-def unity_command(hub, editor, android):
-    """The Unity Hub command line that gets 6000.0.85f1 with Android and its children, or None when present."""
+def unity_command(cli, editor, android, system=None, cpu=None):
+    """The Unity CLI command that gets 6000.0.85f1 with Android and its children, or None when present.
+    Unity Hub 4.0.0 (2026-11-13) no longer runs `-- --headless install`; the standalone Unity CLI does. On a Mac
+    the architecture is named: without it Hub 3.22.5 asked "Please select preferred architecture" in a log nobody
+    read and waited for ever (Verho port, 2026-11-14)."""
     if editor and android:
         return None
-    base = [hub, "--", "--headless"]
-    if not editor:
-        return base + ["install", "--version", UNITY_VERSION, "--changeset", UNITY_CHANGESET,
-                       "--module", "android", "--childModules"]
-    return base + ["install-modules", "--version", UNITY_VERSION, "--module", "android", "--childModules"]
+    system = system or platform.system()
+    cpu = cpu or arch()
+    if editor:
+        return [cli, "install-modules", "-e", UNITY_VERSION, "-m", "android", "--cm", "--accept-eula"]
+    cmd = [cli, "install", UNITY_VERSION, "-c", UNITY_CHANGESET, "-m", "android", "--cm", "--accept-eula"]
+    if system == "Darwin":
+        cmd += ["-a", "arm64" if cpu == "arm64" else "x86_64"]
+    return cmd
+
+
+# Android's tools (SDK, NDK, CMake) come with Google's licence; the Unity CLI wants it accepted (--accept-eula) and
+# stopped with exit code 6 without it (GitHub's clean machines, 2026-11-15). The old Hub accepted it silently; now
+# the person is told first, here and in the README (Felipe, 2026-11-15).
+LICENCE_NOTICE = ("Unity's Android module installs Google's Android SDK, NDK and CMake. By going on you accept their "
+                  "licence terms: https://developer.android.com/studio/terms")
+
+
+def cli_error(log):
+    """The Unity CLI's own error line (it writes 'Error: ...'), or ''."""
+    if not (log and os.path.exists(log)):
+        return ""
+    with open(log, encoding="utf-8", errors="replace") as fh:
+        lines = [line.strip() for line in fh if line.strip()]
+    errors = [line for line in lines if line.lower().startswith("error")]
+    return errors[-1] if errors else (lines[-1] if lines else "")
+
+
+def start_unity(cmd, log, popen=subprocess.Popen):
+    """Run the install in the background, its output in log. No keyboard: a question fails at once instead of
+    waiting where nobody sees it."""
+    os.makedirs(os.path.dirname(log), exist_ok=True)
+    with open(log, "w") as fh:
+        return popen(cmd, stdin=subprocess.DEVNULL, stdout=fh, stderr=subprocess.STDOUT)
+
+
+# The standalone Unity CLI, pinned to Unity's manifest for 1.0.0
+# (https://public-cdn.cloud.unity3d.com/hub/prod/cli/1.0.0/latest.json, read 2026-11-14).
+UNITY_CLI_VERSION = "1.0.0"
+UNITY_CLI_BASE = "https://public-cdn.cloud.unity3d.com/hub/prod/cli/%s/" % UNITY_CLI_VERSION
+UNITY_CLI_PINS = {
+    ("Darwin", "arm64"): ("unity-darwin-arm64", "de6cb46c1ac1871d524965ed2ed5f14e1eb13b4fc25210a209a55c0b1154014f"),
+    ("Darwin", "x64"): ("unity-darwin-x64", "2ce9f3cbdc537e4468f178382749508eca7c611cf4b304cc23395c63321a7d96"),
+    ("Windows", "x64"): ("unity-windows-x64.exe", "1bca103f1daa94534e0232474b6b7e18f1c132d8a5868e20c71a649e92507c73"),
+    ("Windows", "arm64"): ("unity-windows-arm64.exe", "3d9afe83c78d1de0a81e7c856f29a5663e89a1a426418cd3af97571e483263f1"),
+}
+
+
+def unity_cli_asset(system, cpu, pins=None):
+    pins = pins or UNITY_CLI_PINS
+    if (system, cpu) not in pins:
+        raise Problem("no Unity CLI %s download for %s %s" % (UNITY_CLI_VERSION, system, cpu))
+    return pins[(system, cpu)]
+
+
+def install_unity_cli(tools, system, cpu, fetch=download, pins=None, say=print, runner=None):
+    """<tools>/unity-cli/unity(.exe): Unity's own command line program, checked against Unity's SHA-256."""
+    folder = os.path.join(tools, "unity-cli")
+    exe = os.path.join(folder, "unity.exe" if system == "Windows" else "unity")
+    if os.path.exists(exe):
+        return exe
+    name, digest = unity_cli_asset(system, cpu, pins)
+    part = os.path.join(tools, "downloads", name)
+    say("downloading the Unity CLI %s (%s)..." % (UNITY_CLI_VERSION, name))
+    fetch(UNITY_CLI_BASE + name, part)
+    got = sha256(part)
+    if got != digest:
+        os.remove(part)
+        raise Problem("the Unity CLI download is not Unity's published file (SHA-256 %s, expected %s): try again "
+                      "later" % (got[:16], digest[:16]))
+    os.makedirs(folder, exist_ok=True)
+    shutil.move(part, exe)
+    make_executable(exe)
+    if system == "Darwin":   # let macOS run a program downloaded by a script
+        (runner or run)(["xattr", "-d", "com.apple.quarantine", exe])
+    return exe
+
+
+def find_installed_editor(cli, system, runner=run):
+    """Where the CLI put 6000.0.85f1, when not at the Hub's usual place: `unity install-path` names the folder."""
+    rc, out = runner([cli, "install-path"])
+    if rc != 0:
+        return None
+    for line in out.splitlines():
+        folder = line.strip().strip('"')
+        if not folder or not os.path.isdir(folder):
+            continue
+        if system == "Windows":
+            exe = os.path.join(folder, UNITY_VERSION, "Editor", "Unity.exe")
+        else:
+            exe = os.path.join(folder, UNITY_VERSION, "Unity.app", "Contents", "MacOS", "Unity")
+        if os.path.exists(exe):
+            return exe
+    return None
 
 
 HUB_INSTALLER = "https://public-cdn.cloud.unity3d.com/hub/prod/UnityHubSetup-%s.%s"   # x64 / arm64; exe / dmg
@@ -510,19 +602,19 @@ def setup(cfg, profile, local_path, system=None, cpu=None, say=print, ask=input,
     from core import config
     player = config._unity_android_player(cfg.get("unity"))
     cmd = None
-    hub = None
+    cli = None
     if not (unity_ok and player and os.path.isdir(player)):
-        hub = ensure_hub(system, say=say, cpu=cpu, tools=tools)
-        cmd = unity_command(hub, editor=bool(unity_ok), android=False)
+        cli = install_unity_cli(tools, system, cpu, say=say)
+        cmd = unity_command(cli, editor=bool(unity_ok), android=False, system=system, cpu=cpu)
+    # The Hub is still where a person signs in to Unity (the licence the build needs).
     if check_licence(os.path.expanduser("~"), system)[0] != "OK":
-        hub = hub or ensure_hub(system, say=say, cpu=cpu, tools=tools)
+        hub = ensure_hub(system, say=say, cpu=cpu, tools=tools)
         sign_in(os.path.expanduser("~"), system, hub, ask=ask, say=say)
     if cmd:
         log = os.path.join(cfg["work"], "logs", "unity_install.log")
-        os.makedirs(os.path.dirname(log), exist_ok=True)
+        say(LICENCE_NOTICE)
         say("Unity %s with Android is downloading in the background (about 9 GB; log: %s)" % (UNITY_VERSION, log))
-        with open(log, "w") as fh:
-            unity_proc = subprocess.Popen(cmd, stdout=fh, stderr=subprocess.STDOUT)
+        unity_proc = start_unity(cmd, log)
     else:
         say("Unity %s with Android: already installed" % UNITY_VERSION)
 
@@ -548,13 +640,75 @@ def setup(cfg, profile, local_path, system=None, cpu=None, say=print, ask=input,
 
     if unity_proc:
         say("\nwaiting for Unity to finish downloading and installing...")
-        began = time.time()
-        editor = editor_folder(cfg.get("unity"), system)
-        while unity_proc.poll() is None:
-            time.sleep(15)
-            _live(unity_progress(log, editor, int((time.time() - began) / 60), lang=lang))
-        _live("Unity: done", end=True)
-        if unity_proc.returncode != 0:
-            raise Problem("Unity Hub could not install Unity %s (exit code %s): see %s. Open Unity Hub, sign in, and "
-                          "run setup again." % (UNITY_VERSION, unity_proc.returncode, log))
+        unity = wait_for_unity(unity_proc, cli, cfg.get("unity"), log, system, lang=lang)
+        if unity != cfg.get("unity"):
+            found["unity"] = unity
+            update_local(local_path, found)
+            say("Unity: %s" % unity)
     return found
+
+
+def wait_for_unity(proc, cli, unity, log, system, lang="en", sleep=None, clock=None, finder=None):
+    """Wait for the install, with a live line; the editor's path (where setup looks, or where the CLI put it)."""
+    sleep = sleep or time.sleep
+    clock = clock or time.time
+    finder = finder or find_installed_editor
+    began = clock()
+    editor = editor_folder(unity, system)
+    while proc.poll() is None:
+        sleep(15)
+        _live(unity_progress(log, editor, int((clock() - began) / 60), lang=lang))
+    _live("Unity: done", end=True)
+    if proc.returncode != 0:
+        said = cli_error(log)
+        raise Problem("the Unity CLI could not install Unity %s (exit code %s)%s. Its log: %s. Run setup again; if it "
+                      "says the same, open an issue with that log." % (UNITY_VERSION, proc.returncode,
+                                                                       ": " + said if said else "", log))
+    if unity and os.path.exists(unity):
+        return unity
+    elsewhere = finder(cli, system)
+    if not elsewhere:
+        raise Problem("the Unity CLI finished but Unity %s is not where setup looks (%s): see %s"
+                      % (UNITY_VERSION, unity, log))
+    return elsewhere
+
+
+def install_unity_only(work, system=None, cpu=None, say=print, popen=subprocess.Popen, fetch=download,
+                       sleep=None, finder=None):
+    """Only Unity with Android, as setup does it, then checked: the clean-Mac check on GitHub runs this
+    (.github/workflows/unity-install.yml), so a change by Unity (Hub 4, 2026-11-13) is seen before a person meets it.
+    No sign-in, no game: those need a person."""
+    system = system or platform.system()
+    cpu = cpu or arch()
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    from core import config
+    tools = os.path.join(work, "tools")
+    cli = install_unity_cli(tools, system, cpu, fetch=fetch, say=say)
+    unity = config._unity_default()
+    cmd = unity_command(cli, editor=os.path.exists(unity), android=False, system=system, cpu=cpu)
+    say(LICENCE_NOTICE)
+    say("running: %s" % " ".join(cmd))
+    log = os.path.join(work, "logs", "unity_install.log")
+    proc = start_unity(cmd, log, popen=popen)
+    try:
+        unity = wait_for_unity(proc, cli, unity, log, system, sleep=sleep, finder=finder)
+    finally:
+        if os.path.exists(log):
+            with open(log, encoding="utf-8", errors="replace") as fh:
+                say("--- the Unity CLI said (last lines):\n" + "".join(fh.readlines()[-40:]))
+    player = config._unity_android_player(unity)
+    if not (player and os.path.isdir(player)):
+        raise Problem("Unity %s is installed (%s) but without the Android module" % (UNITY_VERSION, unity))
+    say("OK: Unity %s at %s, Android at %s" % (UNITY_VERSION, unity, player))
+    return unity
+
+
+if __name__ == "__main__":
+    # python3 tools/setup/setup_machine.py --unity-only <work folder>
+    if len(sys.argv) == 3 and sys.argv[1] == "--unity-only":
+        try:
+            install_unity_only(os.path.abspath(sys.argv[2]))
+        except Problem as e:
+            sys.exit("FAIL: %s" % e)
+    else:
+        sys.exit("usage: setup_machine.py --unity-only <work folder>")

@@ -238,20 +238,157 @@ class TestDotnet(Base):
 
 
 class TestUnity(Base):
+    """Unity Hub 4.0.0 (2026-11-13) no longer runs `-- --headless install`: it prints a table pointing to the
+    standalone Unity CLI. The editor is installed with that CLI (`unity install`), pinned like AssetRipper."""
+
+    def has(self, cmd, words):
+        return any(cmd[i:i + len(words)] == words for i in range(len(cmd)))
+
     def test_editor_and_android_present(self):
-        self.assertIsNone(sm.unity_command("hub", editor=True, android=True))
+        self.assertIsNone(sm.unity_command("cli", editor=True, android=True, system="Windows", cpu="x64"))
 
     def test_installs_the_exact_version_with_android_and_its_children(self):
-        cmd = sm.unity_command("hub", editor=False, android=False)
-        self.assertEqual(cmd[:3], ["hub", "--", "--headless"])
-        for words in (["install"], ["--version", "6000.0.85f1"], ["--changeset", "ee7790f1426a"],
-                      ["--module", "android"], ["--childModules"]):
-            self.assertTrue(any(cmd[i:i + len(words)] == words for i in range(len(cmd))), (words, cmd))
+        cmd = sm.unity_command("cli", editor=False, android=False, system="Windows", cpu="x64")
+        self.assertEqual(cmd[:3], ["cli", "install", "6000.0.85f1"])
+        self.assertNotIn("--headless", cmd)
+        for words in (["-c", "ee7790f1426a"], ["-m", "android"], ["--cm"]):
+            self.assertTrue(self.has(cmd, words), (words, cmd))
+        self.assertNotIn("-a", cmd)              # the architecture flag is macOS only
+
+    def test_the_android_tools_licence_is_accepted_after_saying_so(self):
+        # 2026-11-15, the first real install on GitHub's clean machines: the Unity CLI stopped with "One or more
+        # modules require license acceptance. Pass --accept-eula" (exit 6); the old Hub accepted it silently.
+        for system, editor in (("Windows", False), ("Darwin", False), ("Darwin", True)):
+            self.assertIn("--accept-eula", sm.unity_command("cli", editor, False, system=system, cpu="arm64"))
+        self.assertIn("https://developer.android.com/studio/terms", sm.LICENCE_NOTICE)
+
+    def test_a_failed_install_says_the_clis_own_error(self):
+        log = os.path.join(self.tmp, "unity_install.log")
+        write(log, b"Adding module cmake-3.22.1 as dependency.\nError: something Unity said.\n\n")
+
+        class Proc:
+            returncode = 6
+
+            def poll(self):
+                return 6
+
+        with self.assertRaises(sm.Problem) as ctx:
+            sm.wait_for_unity(Proc(), "cli", None, log, "Darwin", sleep=lambda s: None)
+        self.assertIn("Error: something Unity said.", str(ctx.exception))
+        self.assertNotIn("sign in", str(ctx.exception))
+
+    def test_mac_names_the_architecture_or_the_question_waits_unseen(self):
+        # 2026-11-14 (Verho port): Hub 3.22.5 on Apple silicon stopped at "Please select preferred architecture",
+        # written to the log nobody reads, and waited for ever.
+        self.assertTrue(self.has(sm.unity_command("cli", False, False, system="Darwin", cpu="arm64"), ["-a", "arm64"]))
+        self.assertTrue(self.has(sm.unity_command("cli", False, False, system="Darwin", cpu="x64"), ["-a", "x86_64"]))
 
     def test_adds_android_to_an_editor_without_it(self):
-        cmd = sm.unity_command("hub", editor=True, android=False)
-        self.assertIn("install-modules", cmd)
-        self.assertIn("--childModules", cmd)
+        cmd = sm.unity_command("cli", editor=True, android=False, system="Darwin", cpu="arm64")
+        self.assertEqual(cmd[:2], ["cli", "install-modules"])
+        self.assertTrue(self.has(cmd, ["-e", "6000.0.85f1"]))
+        self.assertTrue(self.has(cmd, ["-m", "android"]))
+        self.assertIn("--cm", cmd)
+
+    def test_unity_runs_with_no_keyboard(self):
+        # Any question the installer asks must fail at once, not wait in a log.
+        seen = {}
+        log = os.path.join(self.tmp, "logs", "unity_install.log")
+        sm.start_unity(["cli", "install"], log, popen=lambda cmd, **kw: seen.update(kw) or "proc")
+        self.assertIs(seen["stdin"], sm.subprocess.DEVNULL)
+        self.assertTrue(os.path.exists(log))
+
+    def test_the_cli_is_the_pinned_file_for_each_computer(self):
+        self.assertEqual(sm.unity_cli_asset("Darwin", "arm64")[0], "unity-darwin-arm64")
+        self.assertEqual(sm.unity_cli_asset("Darwin", "x64")[0], "unity-darwin-x64")
+        self.assertEqual(sm.unity_cli_asset("Windows", "x64")[0], "unity-windows-x64.exe")
+        self.assertEqual(sm.unity_cli_asset("Windows", "arm64")[0], "unity-windows-arm64.exe")
+        # Unity's manifest for 1.0.0 (public-cdn.cloud.unity3d.com/hub/prod/cli/1.0.0/latest.json, read 2026-11-14)
+        self.assertEqual(sm.unity_cli_asset("Windows", "x64")[1],
+                         "1bca103f1daa94534e0232474b6b7e18f1c132d8a5868e20c71a649e92507c73")
+
+    def test_the_cli_is_downloaded_and_checked(self):
+        url = sm.UNITY_CLI_BASE + "unity-darwin-arm64"
+        pins = {("Darwin", "arm64"): ("unity-darwin-arm64", hashlib.sha256(b"cli").hexdigest())}
+        exe = sm.install_unity_cli(self.tools, "Darwin", "arm64", Fake({url: b"cli"}).download, pins=pins,
+                                   runner=lambda cmd: (0, ""))
+        self.assertEqual(os.path.basename(exe), "unity")
+        self.assertTrue(os.access(exe, os.X_OK))
+
+    def test_a_changed_cli_download_is_refused(self):
+        url = sm.UNITY_CLI_BASE + "unity-windows-x64.exe"
+        with self.assertRaises(sm.Problem):
+            sm.install_unity_cli(self.tools, "Windows", "x64", Fake({url: b"tampered"}).download)
+        self.assertFalse(os.path.exists(os.path.join(self.tools, "unity-cli", "unity.exe")))
+
+    def test_the_cli_already_there_is_not_downloaded_again(self):
+        write(os.path.join(self.tools, "unity-cli", "unity.exe"), b"cli")
+        fake = Fake()
+        sm.install_unity_cli(self.tools, "Windows", "x64", fake.download)
+        self.assertEqual(fake.downloads, [])
+
+    def unity_only(self, android=True, rc=0):
+        """install_unity_only with stand-ins: the CLI 'installs' an editor (with or without Android) in tmp."""
+        from unittest import mock
+        import platform as pf
+        system, cpu = pf.system(), sm.arch()
+        name, _ = sm.unity_cli_asset(system, cpu)
+        url = sm.UNITY_CLI_BASE + name
+        pins = {(system, cpu): (name, hashlib.sha256(b"cli").hexdigest())}
+        if system == "Windows":
+            exe = os.path.join(self.tmp, "Editors", "6000.0.85f1", "Editor", "Unity.exe")
+            player = os.path.join(os.path.dirname(exe), "Data", "PlaybackEngines", "AndroidPlayer")
+        else:
+            exe = os.path.join(self.tmp, "Editors", "6000.0.85f1", "Unity.app", "Contents", "MacOS", "Unity")
+            player = os.path.join(self.tmp, "Editors", "6000.0.85f1", "PlaybackEngines", "AndroidPlayer")
+        ran = []
+
+        class Proc:
+            returncode = rc
+
+            def poll(self):
+                return rc
+
+        def popen(cmd, **kw):
+            ran.append(cmd)
+            write(exe)
+            if android:
+                os.makedirs(player, exist_ok=True)
+            return Proc()
+
+        said = []
+        with mock.patch.object(sm, "UNITY_CLI_PINS", pins), \
+                mock.patch("core.config._unity_default", return_value=os.path.join(self.tmp, "nowhere", "Unity")):
+            result = sm.install_unity_only(self.work, say=said.append, popen=popen, fetch=Fake({url: b"cli"}).download,
+                                           sleep=lambda s: None, finder=lambda cli, system: exe)
+        return result, ran, said, exe
+
+    def test_unity_only_installs_and_checks_android(self):
+        result, ran, said, exe = self.unity_only()
+        self.assertEqual(result, exe)
+        self.assertEqual(ran[0][1:3], ["install", "6000.0.85f1"])
+        self.assertTrue(said[-1].startswith("OK: Unity 6000.0.85f1"))
+        self.assertIn(sm.LICENCE_NOTICE, said)
+
+    def test_unity_only_without_android_fails(self):
+        with self.assertRaises(sm.Problem):
+            self.unity_only(android=False)
+
+    def test_unity_only_says_why_the_cli_failed(self):
+        with self.assertRaises(sm.Problem) as ctx:
+            self.unity_only(rc=3)
+        self.assertIn("exit code 3", str(ctx.exception))
+
+    def test_an_editor_the_cli_put_elsewhere_is_found(self):
+        folder = os.path.join(self.tmp, "Editors")
+        exe = os.path.join(folder, "6000.0.85f1", "Editor", "Unity.exe")
+        write(exe)
+        runner = lambda cmd: (0, "%s\n" % folder) if cmd[1:] == ["install-path"] else (1, "")
+        self.assertEqual(sm.find_installed_editor("cli", "Windows", runner=runner), exe)
+        mac = os.path.join(folder, "6000.0.85f1", "Unity.app", "Contents", "MacOS", "Unity")
+        write(mac)
+        self.assertEqual(sm.find_installed_editor("cli", "Darwin", runner=runner), mac)
+        self.assertIsNone(sm.find_installed_editor("cli", "Darwin", runner=lambda cmd: (1, "")))
 
     def test_no_hub_on_windows_uses_winget(self):
         fake = Fake()
