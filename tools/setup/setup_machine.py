@@ -367,11 +367,28 @@ def unity_command(cli, editor, android, system=None, cpu=None):
     system = system or platform.system()
     cpu = cpu or arch()
     if editor:
-        return [cli, "install-modules", "-e", UNITY_VERSION, "-m", "android", "--cm"]
-    cmd = [cli, "install", UNITY_VERSION, "-c", UNITY_CHANGESET, "-m", "android", "--cm"]
+        return [cli, "install-modules", "-e", UNITY_VERSION, "-m", "android", "--cm", "--accept-eula"]
+    cmd = [cli, "install", UNITY_VERSION, "-c", UNITY_CHANGESET, "-m", "android", "--cm", "--accept-eula"]
     if system == "Darwin":
         cmd += ["-a", "arm64" if cpu == "arm64" else "x86_64"]
     return cmd
+
+
+# Android's tools (SDK, NDK, CMake) come with Google's licence; the Unity CLI wants it accepted (--accept-eula) and
+# stopped with exit code 6 without it (GitHub's clean machines, 2026-11-15). The old Hub accepted it silently; now
+# the person is told first, here and in the README (Felipe, 2026-11-15).
+LICENCE_NOTICE = ("Unity's Android module installs Google's Android SDK, NDK and CMake. By going on you accept their "
+                  "licence terms: https://developer.android.com/studio/terms")
+
+
+def cli_error(log):
+    """The Unity CLI's own error line (it writes 'Error: ...'), or ''."""
+    if not (log and os.path.exists(log)):
+        return ""
+    with open(log, encoding="utf-8", errors="replace") as fh:
+        lines = [line.strip() for line in fh if line.strip()]
+    errors = [line for line in lines if line.lower().startswith("error")]
+    return errors[-1] if errors else (lines[-1] if lines else "")
 
 
 def start_unity(cmd, log, popen=subprocess.Popen):
@@ -595,6 +612,7 @@ def setup(cfg, profile, local_path, system=None, cpu=None, say=print, ask=input,
         sign_in(os.path.expanduser("~"), system, hub, ask=ask, say=say)
     if cmd:
         log = os.path.join(cfg["work"], "logs", "unity_install.log")
+        say(LICENCE_NOTICE)
         say("Unity %s with Android is downloading in the background (about 9 GB; log: %s)" % (UNITY_VERSION, log))
         unity_proc = start_unity(cmd, log)
     else:
@@ -642,8 +660,10 @@ def wait_for_unity(proc, cli, unity, log, system, lang="en", sleep=None, clock=N
         _live(unity_progress(log, editor, int((clock() - began) / 60), lang=lang))
     _live("Unity: done", end=True)
     if proc.returncode != 0:
-        raise Problem("the Unity CLI could not install Unity %s (exit code %s): see %s. Open Unity Hub, sign in, "
-                      "and run setup again." % (UNITY_VERSION, proc.returncode, log))
+        said = cli_error(log)
+        raise Problem("the Unity CLI could not install Unity %s (exit code %s)%s. Its log: %s. Run setup again; if it "
+                      "says the same, open an issue with that log." % (UNITY_VERSION, proc.returncode,
+                                                                       ": " + said if said else "", log))
     if unity and os.path.exists(unity):
         return unity
     elsewhere = finder(cli, system)
@@ -666,6 +686,7 @@ def install_unity_only(work, system=None, cpu=None, say=print, popen=subprocess.
     cli = install_unity_cli(tools, system, cpu, fetch=fetch, say=say)
     unity = config._unity_default()
     cmd = unity_command(cli, editor=os.path.exists(unity), android=False, system=system, cpu=cpu)
+    say(LICENCE_NOTICE)
     say("running: %s" % " ".join(cmd))
     log = os.path.join(work, "logs", "unity_install.log")
     proc = start_unity(cmd, log, popen=popen)

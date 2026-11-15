@@ -31,6 +31,9 @@ game version, AssetRipper, .NET 8), builds the game and installs it on the Quest
 sign-in, your Steam user name (SteamCMD itself asks for the password: **these tools never see it**), and to plug in
 the Quest. Run the same line again at any time: finished steps are skipped.
 
+Unity's Android module installs Google's Android SDK, NDK and CMake: running the line means you accept their
+[licence terms](https://developer.android.com/studio/terms), as Unity Hub does when you add Android by hand.
+
 To do it by hand instead: [Windows](docs/BY_HAND_WINDOWS.md) · [Mac](docs/BY_HAND_MAC.md).
 
 ## Updating

@@ -255,6 +255,28 @@ class TestUnity(Base):
             self.assertTrue(self.has(cmd, words), (words, cmd))
         self.assertNotIn("-a", cmd)              # the architecture flag is macOS only
 
+    def test_the_android_tools_licence_is_accepted_after_saying_so(self):
+        # 2026-11-15, the first real install on GitHub's clean machines: the Unity CLI stopped with "One or more
+        # modules require license acceptance. Pass --accept-eula" (exit 6); the old Hub accepted it silently.
+        for system, editor in (("Windows", False), ("Darwin", False), ("Darwin", True)):
+            self.assertIn("--accept-eula", sm.unity_command("cli", editor, False, system=system, cpu="arm64"))
+        self.assertIn("https://developer.android.com/studio/terms", sm.LICENCE_NOTICE)
+
+    def test_a_failed_install_says_the_clis_own_error(self):
+        log = os.path.join(self.tmp, "unity_install.log")
+        write(log, b"Adding module cmake-3.22.1 as dependency.\nError: something Unity said.\n\n")
+
+        class Proc:
+            returncode = 6
+
+            def poll(self):
+                return 6
+
+        with self.assertRaises(sm.Problem) as ctx:
+            sm.wait_for_unity(Proc(), "cli", None, log, "Darwin", sleep=lambda s: None)
+        self.assertIn("Error: something Unity said.", str(ctx.exception))
+        self.assertNotIn("sign in", str(ctx.exception))
+
     def test_mac_names_the_architecture_or_the_question_waits_unseen(self):
         # 2026-11-14 (Verho port): Hub 3.22.5 on Apple silicon stopped at "Please select preferred architecture",
         # written to the log nobody reads, and waited for ever.
@@ -346,6 +368,7 @@ class TestUnity(Base):
         self.assertEqual(result, exe)
         self.assertEqual(ran[0][1:3], ["install", "6000.0.85f1"])
         self.assertTrue(said[-1].startswith("OK: Unity 6000.0.85f1"))
+        self.assertIn(sm.LICENCE_NOTICE, said)
 
     def test_unity_only_without_android_fails(self):
         with self.assertRaises(sm.Problem):
