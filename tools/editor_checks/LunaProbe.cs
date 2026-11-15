@@ -90,7 +90,7 @@ public class LunaProbe : MonoBehaviour
 
     static readonly int[] FrameRates = { 72, 45, 90, 60 };
     static readonly string[] Core = { "Menu", "Spawns", "Walk", "Run", "JumpAndFall", "FallSpawns", "SelectCursor", "Buttons", "AllMenus", "Options", "TouchMapping", "SpellAim", "TheaterLaser", "HandsAtHead",
-                                      "Teleports", "TowerTeleport", "Ladder", "Elevator", "BoatRide", "PickupIcon", "PopLayout", "WarpLoading", "QuitToTitle", "FirstLaunch", "CursorGlideCut", "OpeningFacing", "MenuFieldOfView", "SaveLoad", "Death", "HeadRelativeMove" };
+                                      "Teleports", "TowerTeleport", "Ladder", "Elevator", "BoatRide", "PickupIcon", "PopLayout", "WarpLoading", "QuitToTitle", "FirstLaunch", "CursorGlideCut", "OpeningFacing", "SpriteAssetSearch", "HeadInWall", "MenuFieldOfView", "SaveLoad", "Death", "HeadRelativeMove" };
 
     IEnumerator Start()
     {
@@ -1316,6 +1316,123 @@ public class LunaProbe : MonoBehaviour
         pl.gravity = 10f;
         LunaVRGameplay.TestLeftStick = null;
         LunaHeadTracker.TestPose = null;
+    }
+
+    // The first HUD of a launch searched every Resources folder for TMP sprite assets: Resources.LoadAll("")
+    // loaded the game's 822 resource files (126 MB), and the Quest stood still 4 to 7 s on the "Hollow Basin"
+    // title after the new game's opening (Felipe's video, 2026-11-14; LUNA_PERF PITT_A1 worst_ms=7377).
+    // What the earlier cases loaded is let go first, so the search costs here what it costs on a fresh launch.
+    IEnumerator SpriteAssetSearch()
+    {
+        var flag = typeof(LunaVRGameplay).GetField("spriteAssetFixed", BindingFlags.Static | BindingFlags.NonPublic);
+        var use = typeof(LunaVRGameplay).GetMethod("UseGameSpriteAsset", BindingFlags.Static | BindingFlags.NonPublic);
+        if (flag == null || use == null) { Check("sprite_asset.found", false, "flag=" + (flag != null) + " method=" + (use != null)); yield break; }
+        Hold_Data.HD = Data(Vector3.zero);
+        SceneManager.LoadScene("MainMenu");
+        yield return WaitFrames(5);
+        var unload = Resources.UnloadUnusedAssets();
+        while (!unload.isDone) yield return null;
+        System.GC.Collect();
+        yield return WaitFrames(2);
+        int before = Resources.FindObjectsOfTypeAll<Object>().Length;
+        flag.SetValue(null, false);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        use.Invoke(null, null);
+        watch.Stop();
+        int loaded = Resources.FindObjectsOfTypeAll<Object>().Length - before;
+        var chosen = TMPro.TMP_Settings.defaultSpriteAsset;
+        int sprites = chosen != null ? chosen.spriteCharacterTable.Count : 0;
+        Check("sprite_asset.game_icons", chosen != null && sprites >= 31, "default sprite asset=" + (chosen != null ? chosen.name : "none") + " sprites=" + sprites);
+        Check("sprite_asset.search_is_light", loaded < 200 && watch.ElapsedMilliseconds < 300,
+              "objects loaded by the search=" + loaded + " in " + watch.ElapsedMilliseconds + " ms");
+    }
+
+    // The real head can lean through a wall the body stops at; the level behind it was drawn (Felipe: "you can
+    // see the map, people could use it to find secrets"). With the head inside a wall the view goes black, and
+    // comes back when the head is out. The body's own place, beside the same wall, stays clear.
+    IEnumerator HeadInWall()
+    {
+        Hold_Data.HD = Data(Vector3.zero);
+        SceneManager.LoadScene("PITT_A1");
+        yield return WaitFrames(3);
+        float settle = Time.time + 3f;
+        while (Time.time < settle) yield return null;
+        var pl = FindObjectOfType<Player_Control_scr>();
+        var tracker = pl.GetComponentInChildren<LunaHeadTracker>(true);
+        var cam = tracker != null ? tracker.GetComponent<Camera>() : null;
+        if (cam == null) { Check("wall.camera_found", false); yield break; }
+        LunaHeadTracker.TestPose = () => (Quaternion.identity, Vector3.zero);
+        yield return WaitFrames(5);
+        var parent = tracker.transform.parent;
+        Vector3 anchor = parent.TransformPoint(tracker.BasePosition);
+        // The nearest wall around the head (the spawn is mid-room), and a side with nothing within a metre.
+        Vector3 wallDir = Vector3.zero, openDir = Vector3.zero; float wallDist = 99f;
+        for (int i = 0; i < 24; i++)
+        {
+            var dir = Quaternion.Euler(0f, i * 15f, 0f) * Vector3.forward;
+            var hits = Physics.RaycastAll(anchor, dir, 20f, ~0, QueryTriggerInteraction.Ignore).Where(h => !h.collider.transform.IsChildOf(pl.transform)).OrderBy(h => h.distance).ToArray();
+            float d = hits.Length > 0 ? hits[0].distance : 99f;
+            if (d > 0.4f && d < wallDist) { wallDist = d; wallDir = dir; }
+            if (d > 1.2f && openDir == Vector3.zero) openDir = dir;
+        }
+        if (wallDir == Vector3.zero || openDir == Vector3.zero) { Check("wall.found", false, "wall=" + wallDist.ToString("F2") + " open=" + (openDir != Vector3.zero)); yield break; }
+        // Move the body to 0.45 m from that wall, as a player standing against it.
+        var body = pl.GetComponent<Rigidbody>();
+        var stand = pl.transform.position + wallDir * (wallDist - 0.45f);
+        pl.transform.position = stand; body.position = stand; body.linearVelocity = Vector3.zero;
+        yield return WaitFrames(5);
+        anchor = parent.TransformPoint(tracker.BasePosition);
+
+        // A head offset that puts the camera at `world` from the head's own place.
+        System.Func<Vector3, Vector3> trackingFor = world =>
+        {
+            var local = parent.InverseTransformVector(world);
+            return Quaternion.Inverse(LunaHeadTracker.YawOffset) * local + LunaHeadTracker.PositionOffset;
+        };
+        float Measure() => CameraBrightness(cam);
+
+        LunaHeadTracker.TestPose = () => (Quaternion.identity, trackingFor(Vector3.zero));
+        float settleClear = Time.time + 1f; while (Time.time < settleClear) yield return null;
+        float atBody = Measure();
+        var inWall = trackingFor(wallDir * 0.75f);
+        LunaHeadTracker.TestPose = () => (Quaternion.identity, inWall);
+        float settleIn = Time.time + 1f; while (Time.time < settleIn) yield return null;
+        float leaning = Measure();
+        Vector3 camAt = cam.transform.position;
+        var leanOpen = trackingFor(openDir * 0.3f);
+        LunaHeadTracker.TestPose = () => (Quaternion.identity, leanOpen);
+        float settleOpen = Time.time + 1f; while (Time.time < settleOpen) yield return null;
+        float leaningAway = Measure();
+        LunaHeadTracker.TestPose = () => (Quaternion.identity, trackingFor(Vector3.zero));
+        float settleBack = Time.time + 1f; while (Time.time < settleBack) yield return null;
+        float back = Measure();
+        Log("WALL wall " + wallDist.ToString("F2") + " m; brightness body=" + atBody.ToString("F3") + " head in wall=" + leaning.ToString("F3")
+            + " (camera " + Vector3.Distance(camAt, anchor).ToString("F2") + " m from the head) leaning away=" + leaningAway.ToString("F3") + " back=" + back.ToString("F3"));
+        Check("wall.body_against_wall_clear", atBody > 0.01f, "brightness=" + atBody.ToString("F3"));
+        Check("wall.head_in_wall_black", leaning < 0.004f, "brightness=" + leaning.ToString("F3") + " (body " + atBody.ToString("F3") + ")");
+        Check("wall.leaning_away_clear", leaningAway > 0.01f, "brightness=" + leaningAway.ToString("F3"));
+        Check("wall.back_out_clear", back > 0.01f && back > atBody * 0.7f, "brightness=" + back.ToString("F3") + " (before " + atBody.ToString("F3") + ")");
+        LunaHeadTracker.TestPose = null;
+    }
+
+    // What the camera draws now, as a mean grey level (0 black, 1 white).
+    static float CameraBrightness(Camera cam)
+    {
+        var rt = RenderTexture.GetTemporary(192, 192, 24);
+        var was = cam.targetTexture;
+        cam.targetTexture = rt;
+        cam.Render();
+        cam.targetTexture = was;
+        var active = RenderTexture.active;
+        RenderTexture.active = rt;
+        var tex = new Texture2D(rt.width, rt.height, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
+        RenderTexture.active = active;
+        RenderTexture.ReleaseTemporary(rt);
+        float sum = 0f; var px = tex.GetPixels();
+        foreach (var c in px) sum += c.grayscale;
+        Destroy(tex);
+        return sum / px.Length;
     }
 
     IEnumerator Run() { yield return WalkCase("run", null, true); }
